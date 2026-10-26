@@ -1,0 +1,68 @@
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build output
+**/bin/
+**/obj/
+artifacts/
+publish/
+dist/
+out/
+
+# Test output
+**/TestResults/
+TestResults/
+coverage/
+coverage.*
+*.coverage
+*.coveragexml
+
+# Packages
+*.nupkg
+*.snupkg
+
+# Debug files
+*.pdb
+*.cache
+*.tmp
+*.temp
+*.bak
+*.log
+
+# HyperDL runtime data
+hyperdl.db
+hyperdl.db-shm
+hyperdl.db-wal
+*.part
+*.download
+logs/
+Logs/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+appsettings.Local.json
+appsettings.Development.local.json
+*.secrets.json
+secrets/
+credentials/
+
+# Certificates and private keys
+*.pfx
+*.p12
+*.key
+*.pem
+
+# Installer output
+installer/Output/
+installer/output/
+HyperDL_Setup*.exe
+
+# Local IDE settings
+.idea/
+.vscode/settings.json
