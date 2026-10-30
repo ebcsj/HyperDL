@@ -141,8 +141,7 @@ public class DownloadEngineSegmentTests
         await Assert.ThrowsAsync<InvalidDataException>(
             () => context.Engine.DownloadAsync(CreateMetadata(bytes.LongLength)));
 
-        Assert.False(File.Exists(Path.Combine(context.DirectoryPath, "archive.bin")));
-        Assert.False(File.Exists(Path.Combine(context.DirectoryPath, "archive.bin.part")));
+        AssertOnlyPartFileRemains(context);
     }
 
     [Fact]
@@ -165,7 +164,7 @@ public class DownloadEngineSegmentTests
         await Assert.ThrowsAsync<InvalidDataException>(
             () => context.Engine.DownloadAsync(CreateMetadata(bytes.LongLength)));
 
-        AssertNoFinalOrPartFile(context);
+        AssertOnlyPartFileRemains(context);
     }
 
     [Fact]
@@ -192,7 +191,7 @@ public class DownloadEngineSegmentTests
         await Assert.ThrowsAsync<InvalidDataException>(
             () => context.Engine.DownloadAsync(CreateMetadata(bytes.LongLength)));
 
-        AssertNoFinalOrPartFile(context);
+        AssertOnlyPartFileRemains(context);
     }
 
     [Fact]
@@ -219,7 +218,7 @@ public class DownloadEngineSegmentTests
         await Assert.ThrowsAsync<InvalidDataException>(
             () => context.Engine.DownloadAsync(CreateMetadata(bytes.LongLength)));
 
-        AssertNoFinalOrPartFile(context);
+        AssertOnlyPartFileRemains(context);
     }
 
     [Fact]
@@ -250,8 +249,11 @@ public class DownloadEngineSegmentTests
         await Assert.ThrowsAsync<HttpRequestException>(
             () => context.Engine.DownloadAsync(CreateMetadata(bytes.LongLength)));
 
-        Assert.Equal(2, enteredCount);
-        AssertNoFinalOrPartFile(context);
+        Assert.True(enteredCount >= 2, $"Expected both workers to start, saw {enteredCount} requests.");
+        var failingAttempts = context.Handler.Requests.Count(
+            request => request.Headers.Range!.Ranges.Single().From == 0);
+        Assert.Equal(new DownloadEngineOptions().MaximumRetryAttempts, failingAttempts);
+        AssertOnlyPartFileRemains(context);
     }
 
     [Fact]
@@ -281,7 +283,7 @@ public class DownloadEngineSegmentTests
         cancellation.Cancel();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => downloadTask);
-        AssertNoFinalOrPartFile(context);
+        AssertOnlyPartFileRemains(context);
     }
 
     [Fact]
@@ -445,7 +447,7 @@ public class DownloadEngineSegmentTests
             2);
         var changed = session.Metadata with { ETag = "\"changed\"" };
 
-        Assert.Throws<InvalidOperationException>(
+        Assert.Throws<SourceChangedException>(
             () => session.EnsureSourceUnchanged(changed));
     }
 
@@ -588,10 +590,10 @@ public class DownloadEngineSegmentTests
         return source.AsSpan(start, length).ToArray();
     }
 
-    private static void AssertNoFinalOrPartFile(DownloadTestContext context)
+    private static void AssertOnlyPartFileRemains(DownloadTestContext context)
     {
         Assert.False(File.Exists(Path.Combine(context.DirectoryPath, "archive.bin")));
-        Assert.False(File.Exists(Path.Combine(context.DirectoryPath, "archive.bin.part")));
+        Assert.True(File.Exists(Path.Combine(context.DirectoryPath, "archive.bin.part")));
     }
 
     private static DownloadTestContext CreateContext(

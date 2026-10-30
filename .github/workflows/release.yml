@@ -1,0 +1,184 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (for example v1.0.0). Required for manual runs."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build installer and publish release
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    env:
+      # Non-secret flag only. GitHub Actions does not expose the `secrets`
+      # context inside `if:` expressions, so use a boolean gate instead.
+      HAS_SIGNING_CERT: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 != '' }}
+
+    steps:
+      - name: Resolve release tag
+        id: release
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $tag = if ($env:EVENT_NAME -eq 'workflow_dispatch') {
+              $env:INPUT_TAG
+          }
+          else {
+              $env:REF_NAME
+          }
+
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+              throw "workflow_dispatch requires the 'tag' input, for example v1.0.0."
+          }
+
+          $tag = $tag.Trim()
+          if ($tag -notmatch '^v\d+(?:\.\d+){1,3}(?:-[0-9A-Za-z.-]+)?$') {
+              throw "Release tag '$tag' is not valid. Expected a tag such as v1.0.0."
+          }
+
+          $version = $tag.Substring(1)
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Preparing release $tag (version $version)."
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Publish app
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $global:LASTEXITCODE = 0
+          & .\scripts\publish.ps1
+          if ($LASTEXITCODE -ne 0) {
+              throw "scripts/publish.ps1 failed with exit code $LASTEXITCODE"
+          }
+
+      # scripts/build-installer.ps1 invokes publish.ps1 again, so the publish
+      # above is the canonical check and this step produces the installer.
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $global:LASTEXITCODE = 0
+          & .\scripts\build-installer.ps1
+          if ($LASTEXITCODE -ne 0) {
+              throw "scripts/build-installer.ps1 failed with exit code $LASTEXITCODE"
+          }
+
+      # ---------------------------------------------------------------------
+      # Optional code signing placeholder.
+      #
+      # No certificate material is decoded, written, or uploaded by this
+      # workflow. To enable signing later, add certificate handling inside a
+      # single step guarded by the non-secret flag below, scope the secret to
+      # that step only, and delete any temporary .pfx in an `always()` cleanup
+      # step. Never echo the secret or store it in an artifact.
+      #
+      #   if: ${{ env.HAS_SIGNING_CERT == 'true' }}
+      #   env:
+      #     WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+      #
+      # The secret-based guard requested in the original design,
+      # `if: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 != '' }}`, is not valid
+      # GitHub Actions syntax because `secrets` is unavailable in `if`.
+      # ---------------------------------------------------------------------
+      - name: Sign release artifacts (placeholder)
+        if: ${{ env.HAS_SIGNING_CERT == 'true' }}
+        shell: pwsh
+        run: |
+          Write-Host "::warning::A signing certificate is configured, but code signing is not implemented. Publishing unsigned artifacts."
+
+      - name: Package release assets
+        id: package
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $version = $env:VERSION
+          $root = $env:GITHUB_WORKSPACE
+          $publishDir = Join-Path $root 'artifacts\publish\HyperDL'
+          $installer = Join-Path $root 'installer\Output\HyperDL_Setup.exe'
+          $assetsRelative = 'artifacts/release'
+          $assetsDir = Join-Path $root 'artifacts\release'
+
+          if (-not (Test-Path -LiteralPath (Join-Path $publishDir 'HyperDL.exe') -PathType Leaf)) {
+              throw "Published app was not found in $publishDir."
+          }
+          if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
+              throw "Installer was not found at $installer."
+          }
+
+          New-Item -ItemType Directory -Path $assetsDir -Force | Out-Null
+
+          $installerName = "HyperDL_${version}_Setup.exe"
+          $installerAsset = Join-Path $assetsDir $installerName
+          Copy-Item -LiteralPath $installer -Destination $installerAsset -Force
+
+          $portableName = "HyperDL_${version}_win-x64_portable.zip"
+          $portableZip = Join-Path $assetsDir $portableName
+          if (Test-Path -LiteralPath $portableZip) {
+              Remove-Item -LiteralPath $portableZip -Force
+          }
+          Compress-Archive -Path (Join-Path $publishDir '*') -DestinationPath $portableZip -CompressionLevel Optimal
+
+          $checksums = Join-Path $assetsDir 'SHA256SUMS.txt'
+          $lines = foreach ($file in @($installerAsset, $portableZip)) {
+              $hash = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+              "$hash  $([System.IO.Path]::GetFileName($file))"
+          }
+          Set-Content -LiteralPath $checksums -Value $lines -Encoding ascii
+
+          Get-Content -LiteralPath $checksums | ForEach-Object { Write-Host $_ }
+
+          "installer_path=$assetsRelative/$installerName" >> $env:GITHUB_OUTPUT
+          "portable_zip_path=$assetsRelative/$portableName" >> $env:GITHUB_OUTPUT
+          "checksums_path=$assetsRelative/SHA256SUMS.txt" >> $env:GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          name: HyperDL ${{ steps.release.outputs.version }}
+          files: |
+            ${{ steps.package.outputs.installer_path }}
+            ${{ steps.package.outputs.portable_zip_path }}
+            ${{ steps.package.outputs.checksums_path }}
+          generate_release_notes: true
+          prerelease: ${{ contains(steps.release.outputs.version, '-') }}
+          fail_on_unmatched_files: true
+          token: ${{ github.token }}

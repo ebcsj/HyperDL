@@ -15,6 +15,7 @@ public enum DownloadSessionStatus
 public sealed class DownloadSession
 {
     private readonly object _sync = new();
+    private readonly IReadOnlyList<DownloadSegment> _initialSegments;
     private DownloadSessionStatus _status = DownloadSessionStatus.Waiting;
     private CancellationTokenSource _pauseSource = new();
     private bool _pauseRequested;
@@ -25,15 +26,16 @@ public sealed class DownloadSession
         string finalPath,
         int connectionCount,
         IReadOnlyList<DownloadSegment> segments,
-        Guid? id = null)
+        Guid? id = null,
+        string? partPath = null)
     {
         Id = id ?? Guid.NewGuid();
         Metadata = metadata;
         FileName = fileName;
         FinalPath = finalPath;
-        PartPath = finalPath + ".part";
+        PartPath = string.IsNullOrWhiteSpace(partPath) ? finalPath + ".part" : partPath;
         ConnectionCount = connectionCount;
-        Segments = segments;
+        _initialSegments = segments;
     }
 
     public DownloadMetadata Metadata { get; }
@@ -42,7 +44,14 @@ public sealed class DownloadSession
     public string FinalPath { get; }
     public string PartPath { get; }
     public int ConnectionCount { get; }
-    public IReadOnlyList<DownloadSegment> Segments { get; }
+
+    /// <summary>
+    /// Returns the live segment map once the engine has started, otherwise the
+    /// segments captured when the session was created or loaded.
+    /// </summary>
+    public IReadOnlyList<DownloadSegment> Segments =>
+        Scheduler?.Snapshot() ?? _initialSegments;
+
     public DownloadSessionStatus Status
     {
         get
@@ -60,8 +69,14 @@ public sealed class DownloadSession
             }
         }
     }
+
     internal object SyncRoot => _sync;
+    internal SegmentScheduler? Scheduler { get; set; }
+    internal BufferMode? BufferModeOverride { get; set; }
+    internal bool? DynamicSegmentationOverride { get; set; }
+    internal int ResolvedBufferSize { get; set; } = DownloadEngine.BalancedBufferSize;
     public string? RecoveryError { get; internal set; }
+
     public bool PauseRequested
     {
         get
@@ -101,21 +116,28 @@ public sealed class DownloadSession
         }
     }
 
+    /// <summary>
+    /// Verifies that resume will not stitch two different remote representations
+    /// together. Missing validators that existed originally count as a change.
+    /// </summary>
     public void EnsureSourceUnchanged(DownloadMetadata current)
     {
         ArgumentNullException.ThrowIfNull(current);
-        if ((Metadata.ContentLength.HasValue &&
-             current.ContentLength.HasValue &&
-             Metadata.ContentLength.Value != current.ContentLength.Value) ||
-            (Metadata.ETag is not null &&
-             current.ETag is not null &&
-             !string.Equals(Metadata.ETag, current.ETag, StringComparison.Ordinal)) ||
-            (Metadata.LastModified.HasValue &&
-             current.LastModified.HasValue &&
-             Metadata.LastModified.Value != current.LastModified.Value))
+
+        var changed =
+            Metadata.ContentLength is { } originalLength &&
+            (current.ContentLength is not { } currentLength ||
+             originalLength != currentLength) ||
+            Metadata.ETag is not null &&
+            !string.Equals(Metadata.ETag, current.ETag, StringComparison.Ordinal) ||
+            Metadata.LastModified is { } originalModified &&
+            (current.LastModified is not { } currentModified ||
+             originalModified != currentModified);
+
+        if (changed)
         {
-            throw new InvalidOperationException(
-                "遠端檔案已變更，為避免混合不同版本資料，無法繼續此下載。");
+            throw new SourceChangedException(
+                "The remote file changed since the download was paused.");
         }
     }
 }

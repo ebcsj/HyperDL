@@ -36,12 +36,19 @@ public sealed class DownloadSegment
 
     public int Index { get; }
     public long StartOffset { get; }
-    public long EndOffset { get; }
+    public long EndOffset { get; internal set; }
     public long CurrentOffset { get; internal set; }
     public long BytesDownloaded { get; internal set; }
-    public long ExpectedLength => EndOffset - StartOffset + 1;
+    public long ExpectedLength => Math.Max(0, EndOffset - StartOffset + 1);
+    public long RemainingLength => Math.Max(0, EndOffset - CurrentOffset + 1);
     public DownloadSegmentStatus Status { get; internal set; }
     public string? ErrorMessage { get; internal set; }
+
+    /// <summary>
+    /// True while the owning worker is writing bytes for this range. The splitter
+    /// must not shrink a range during that window.
+    /// </summary>
+    internal bool IsWriting { get; set; }
 }
 
 public sealed record DownloadSegmentProgress(

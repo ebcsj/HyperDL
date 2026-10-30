@@ -17,7 +17,14 @@ if (-not (Test-Path -LiteralPath $solution -PathType Leaf) -or
 }
 
 if (-not (Test-Path -LiteralPath $dotnet -PathType Leaf)) {
-    throw "x64 .NET SDK was not found at $dotnet"
+    $command = Get-Command dotnet -ErrorAction SilentlyContinue
+    if ($command) {
+        $dotnet = $command.Source
+    }
+}
+
+if (-not (Test-Path -LiteralPath $dotnet -PathType Leaf)) {
+    throw "x64 .NET SDK was not found. Install the .NET 8 SDK or make dotnet available on PATH."
 }
 
 & $dotnet restore $solution
@@ -40,6 +47,7 @@ if ($LASTEXITCODE -ne 0) {
     -r win-x64 `
     --self-contained true `
     -p:PublishTrimmed=false `
+    -p:PublishReadyToRun=true `
     -o $publishOutput
 if ($LASTEXITCODE -ne 0) {
     throw "HyperDL win-x64 publish failed with exit code $LASTEXITCODE"

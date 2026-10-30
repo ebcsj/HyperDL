@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HyperDL</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="popup.js" defer></script>
+</head>
+<body class="popup">
+  <main class="shell">
+    <header class="brand">
+      <img src="icons/icon48.png" width="36" height="36" alt="">
+      <div class="brand-copy">
+        <h1>HyperDL</h1>
+        <p class="subtitle">Send a link to the desktop app</p>
+      </div>
+    </header>
+
+    <form id="download-form" novalidate>
+      <section class="field">
+        <div id="url-label" class="field-label">Current tab URL</div>
+        <div id="tab-url" class="url-box" role="textbox" tabindex="0" aria-readonly="true" aria-labelledby="url-label">Loading...</div>
+      </section>
+
+      <div id="url-notice" class="notice hidden" role="status" aria-live="polite"></div>
+
+      <section class="field">
+        <label for="connections">Connections</label>
+        <select id="connections" name="connections"></select>
+        <p class="hint">Auto lets HyperDL choose a value. More connections can be faster, but some servers limit them.</p>
+      </section>
+
+      <button id="send" class="primary" type="submit" disabled>Download with HyperDL</button>
+    </form>
+
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+
+    <footer class="footer">
+      <button id="open-options" class="link-button" type="button">Settings</button>
+      <span id="version" class="version"></span>
+    </footer>
+  </main>
+</body>
+</html>

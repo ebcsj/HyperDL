@@ -1,650 +1,1155 @@
-using System.IO;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
-using System.Windows.Controls;
+using System.Globalization;
+using System.IO;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Shell;
+using System.Windows.Threading;
 using HyperDL.Core;
+using HyperDL.Localization;
+using HyperDL.Platform;
 
 namespace HyperDL;
 
 public partial class MainWindow : Window
 {
-    private DownloadEngine _downloadEngine = new();
-    private readonly HttpProbe _httpProbe = new();
-    private readonly DownloadDatabase _downloadDatabase = new();
-    private readonly List<DownloadSession> _downloadHistory = [];
-    private readonly ObservableCollection<DownloadListEntry> _downloadRows = [];
-    private CancellationTokenSource? _downloadCancellation;
-    private DownloadSession? _activeSession;
-    private DownloadListEntry? _activeEntry;
-    private HyperDLSettings _settings = new();
+    private readonly IReadOnlyList<Uri> _initialUris;
+    private readonly bool _externalActivation;
+    private readonly string? _startupError;
+    private readonly DispatcherTimer _timer = new()
+    {
+        Interval = TimeSpan.FromMilliseconds(500)
+    };
 
-    public MainWindow()
+    private HyperDLSettings _settings;
+    private DownloadEngine _engine;
+    private DownloadManager _manager;
+    private bool _initializing = true;
+    private bool _loaded;
+    private bool _allowClose;
+    private ICollectionView? _jobsView;
+
+    public MainWindow(
+        HyperDLSettings settings,
+        IReadOnlyList<Uri>? initialUris = null,
+        bool externalActivation = false,
+        string? startupError = null)
     {
         InitializeComponent();
-        DownloadListDataGrid.ItemsSource = _downloadRows;
+        _settings = settings;
+        _initialUris = initialUris ?? [];
+        _externalActivation = externalActivation;
+        _startupError = startupError;
+
+        _engine = CreateEngine(_settings);
+        GlobalConnectionLimiter.Shared.SetLimit(_settings.GlobalConnectionLimit);
+        _manager = new DownloadManager(
+            _engine,
+            new HttpProbe(),
+            new DownloadDatabase(),
+            _settings,
+            SynchronizationContext.Current);
+        _manager.JobCompleted += Manager_JobCompleted;
+        _manager.JobFailed += Manager_JobFailed;
+        JobsGrid.ItemsSource = _manager.Jobs;
+        _jobsView = CollectionViewSource.GetDefaultView(JobsGrid.ItemsSource);
+        _jobsView.Filter = FilterJob;
+
+        ApplyWindowBounds();
+        ApplyColumnWidths();
+        SelectLanguageItem();
+        _timer.Tick += Timer_Tick;
+        ApplyLocalization();
     }
+
+    private static string L(string key) => LocalizationManager.GetString(key);
+
+    public void BringToFront()
+    {
+        if (!IsVisible)
+        {
+            Show();
+        }
+
+        if (WindowState == WindowState.Minimized)
+        {
+            WindowState = WindowState.Normal;
+        }
+
+        Activate();
+        Topmost = true;
+        Topmost = false;
+        Focus();
+    }
+
+    private DownloadJob? SelectedJob => JobsGrid.SelectedItem as DownloadJob;
+
+    private IReadOnlyList<DownloadJob> SelectedJobs =>
+        JobsGrid.SelectedItems.OfType<DownloadJob>().ToArray();
+
+    private DataGridColumn[] GridColumns =>
+    [
+        FileColumn,
+        SizeColumn,
+        ProgressColumn,
+        SpeedColumn,
+        EtaColumn,
+        ConnectionsColumn,
+        BufferColumn,
+        StatusColumn
+    ];
+
+    private DownloadEngine CreateEngine(HyperDLSettings settings) =>
+        new(
+            client: null,
+            downloadDirectory: settings.DownloadDirectory,
+            options: new DownloadEngineOptions
+            {
+                BufferMode = settings.BufferMode,
+                DynamicSegmentation = settings.DynamicSegmentation,
+                MaximumConnectionsPerHost = settings.MaxConnectionsPerHost,
+                SpeedLimitKBps = settings.SpeedLimitKBps
+            });
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
+        if (_loaded)
+        {
+            return;
+        }
+
+        _loaded = true;
+        _timer.Start();
+
+        if (!_settings.LegalUseAcknowledged)
+        {
+            MessageBox.Show(
+                this,
+                L("LegalMessage"),
+                L("LegalTitle"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            _settings = _settings with { LegalUseAcknowledged = true };
+            await SaveSettingsQuietlyAsync();
+        }
+
         try
         {
-            _settings = UserSettingsStore.Load();
-            GlobalConnectionLimiter.Shared.SetLimit(_settings.GlobalConnectionLimit);
-            _downloadEngine = new DownloadEngine(
-                downloadDirectory: _settings.DownloadDirectory,
-                lowRamMode: _settings.LowRamMode);
-            SettingsDownloadDirectoryTextBox.Text = _settings.DownloadDirectory;
-            MaximumConcurrentTextBox.Text = _settings.MaximumConcurrentDownloads.ToString();
-            GlobalConnectionLimitTextBox.Text = _settings.GlobalConnectionLimit.ToString();
-            LowRamModeCheckBox.IsChecked = _settings.LowRamMode;
-            ConnectionCountComboBox.SelectedValue = _settings.ConnectionCount.ToString();
-            if (!_settings.LegalUseAcknowledged)
-            {
-                MessageBox.Show(
-                    this,
-                    "請只下載你有權取得的直接檔案。HyperDL 不提供 DRM 繞過、受保護內容提取或存取限制繞過功能。",
-                    "合法使用提醒",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
-                _settings = _settings with { LegalUseAcknowledged = true };
-                await UserSettingsStore.SaveAsync(_settings);
-            }
-            _downloadHistory.AddRange(await _downloadDatabase.LoadSessionsAsync());
-            foreach (var session in _downloadHistory)
-            {
-                _downloadRows.Add(CreateListEntry(session));
-            }
+            await _manager.InitializeAsync(_settings.AutoResume);
         }
         catch (Exception exception)
         {
-            StatusTextBlock.Text = "Status: 無法載入下載歷史。";
-            MessageBox.Show(
+            ShowMessage(
+                L("DatabaseErrorTitle"),
+                string.Format(L("DatabaseErrorFormat"), exception.Message),
+                MessageBoxImage.Error);
+        }
+
+        if (!string.IsNullOrWhiteSpace(_startupError))
+        {
+            ShowMessage(
+                L("SettingsLoadErrorTitle"),
+                string.Format(L("SettingsLoadErrorFormat"), _startupError),
+                MessageBoxImage.Warning);
+        }
+
+        _initializing = false;
+        if (_initialUris.Count > 0)
+        {
+            await HandleActivationAsync(_initialUris, _externalActivation);
+        }
+
+        UrlTextBox.Focus();
+        UpdateCommandStates();
+        SetStatus(L("ReadyStatus"));
+    }
+
+    /// <summary>
+    /// Entry point for CLI arguments and the single-instance pipe.
+    /// </summary>
+    public Task HandleActivationAsync(IReadOnlyList<Uri> uris, bool external)
+    {
+        if (uris.Count == 0)
+        {
+            BringToFront();
+            return Task.CompletedTask;
+        }
+
+        BringToFront();
+
+        if (external && _settings.ConfirmExternalDownloads)
+        {
+            var preview = string.Join(Environment.NewLine, uris.Take(5));
+            if (uris.Count > 5)
+            {
+                preview += Environment.NewLine + "…";
+            }
+
+            var answer = MessageBox.Show(
                 this,
-                $"無法開啟下載資料庫：{exception.Message}",
-                "資料庫錯誤",
-                MessageBoxButton.OK,
+                string.Format(L("ExternalDownloadMessage"), preview),
+                L("ExternalDownloadTitle"),
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+            if (answer != MessageBoxResult.Yes)
+            {
+                SetStatus(L("ReadyStatus"));
+                return Task.CompletedTask;
+            }
+        }
+
+        var added = 0;
+        var skipped = 0;
+        foreach (var uri in uris)
+        {
+            if (_manager.AddUrl(uri))
+            {
+                added++;
+            }
+            else
+            {
+                skipped++;
+            }
+        }
+
+        if (added > 0)
+        {
+            SetStatus(string.Format(L("BatchAddedFormat"), added));
+        }
+        else if (skipped > 0)
+        {
+            SetStatus(string.Format(L("DuplicateSkippedFormat"), skipped));
+        }
+
+        UpdateCommandStates();
+        return Task.CompletedTask;
+    }
+
+    private async void AddButton_Click(object sender, RoutedEventArgs e) =>
+        await AddFromInputAsync();
+
+    private async void UrlTextBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            e.Handled = true;
+            await AddFromInputAsync();
+        }
+    }
+
+    private async Task AddFromInputAsync()
+    {
+        var text = UrlTextBox.Text;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        var result = await _manager.AddTextAsync(text);
+        if (result.Added > 0)
+        {
+            UrlTextBox.Clear();
+            SetStatus(string.Format(L("BatchAddedFormat"), result.Added));
+            if (result.Skipped > 0)
+            {
+                SetStatus(
+                    string.Format(L("BatchAddedFormat"), result.Added) + " " +
+                    string.Format(L("DuplicateSkippedFormat"), result.Skipped));
+            }
+        }
+        else if (result.Invalid > 0)
+        {
+            ShowMessage(L("InvalidUrlTitle"), L("InvalidUrlMessage"), MessageBoxImage.Warning);
+        }
+        else if (result.Skipped > 0)
+        {
+            SetStatus(string.Format(L("DuplicateSkippedFormat"), result.Skipped));
+        }
+
+        UpdateCommandStates();
+    }
+
+    private async Task AddTextAsync(string text)
+    {
+        var result = await _manager.AddTextAsync(text);
+        if (result.Added > 0)
+        {
+            SetStatus(string.Format(L("BatchAddedFormat"), result.Added));
+        }
+        else if (result.Invalid > 0)
+        {
+            ShowMessage(L("InvalidUrlTitle"), L("InvalidUrlMessage"), MessageBoxImage.Warning);
+        }
+        else if (result.Skipped > 0)
+        {
+            SetStatus(string.Format(L("DuplicateSkippedFormat"), result.Skipped));
+        }
+
+        UpdateCommandStates();
+    }
+
+    private void PauseButton_Click(object sender, RoutedEventArgs e)
+    {
+        foreach (var job in SelectedJobs.Where(job => job.CanPause))
+        {
+            _manager.Pause(job);
+        }
+
+        UpdateCommandStates();
+    }
+
+    private void ResumeButton_Click(object sender, RoutedEventArgs e)
+    {
+        foreach (var job in SelectedJobs.Where(job => job.CanResume))
+        {
+            _manager.Resume(job);
+        }
+
+        UpdateCommandStates();
+    }
+
+    private void CancelButton_Click(object sender, RoutedEventArgs e)
+    {
+        foreach (var job in SelectedJobs.Where(job => job.CanCancel))
+        {
+            _manager.Cancel(job);
+        }
+
+        UpdateCommandStates();
+    }
+
+    private void RetryButton_Click(object sender, RoutedEventArgs e)
+    {
+        foreach (var job in SelectedJobs.Where(job => job.CanRetry))
+        {
+            _manager.Retry(job);
+        }
+
+        UpdateCommandStates();
+    }
+
+    private async void RemoveButton_Click(object sender, RoutedEventArgs e) =>
+        await RemoveSelectedAsync(deleteFiles: false);
+
+    private async Task RemoveSelectedAsync(bool deleteFiles)
+    {
+        var jobs = SelectedJobs;
+        if (jobs.Count == 0)
+        {
+            SetStatus(L("NoSelectionMessage"));
+            return;
+        }
+
+        var single = jobs.Count == 1 ? jobs[0] : null;
+        var message = deleteFiles
+            ? single is not null
+                ? string.Format(L("ConfirmDeleteFileMessage"), single.FileName)
+                : string.Format(L("ConfirmDeleteMultipleFilesMessage"), jobs.Count)
+            : single is not null
+                ? string.Format(
+                    L(single.IsCompleted
+                        ? "ConfirmRemoveCompletedMessage"
+                        : "ConfirmRemoveMessage"),
+                    single.FileName)
+                : string.Format(L("ConfirmRemoveMultipleMessage"), jobs.Count);
+        var title = L(deleteFiles ? "ConfirmDeleteFileTitle" : "ConfirmRemoveTitle");
+        if (MessageBox.Show(
+                this,
+                message,
+                title,
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (deleteFiles)
+        {
+            var failures = await _manager.DeleteFilesAsync(jobs);
+            if (failures.Count > 0)
+            {
+                ShowMessage(
+                    L("DeleteFileButton"),
+                    string.Format(L("DeleteFileErrorFormat"), string.Join(
+                        Environment.NewLine,
+                        failures)),
+                    MessageBoxImage.Warning);
+            }
+            else
+            {
+                SetStatus(string.Format(L("DeleteFileFormat"), jobs.Count));
+            }
+        }
+        else
+        {
+            foreach (var job in jobs)
+            {
+                await _manager.RemoveAsync(job);
+            }
+
+            SetStatus(L("ReadyStatus"));
+        }
+
+        UpdateCommandStates();
+    }
+
+    private async void ClearCompletedButton_Click(object sender, RoutedEventArgs e)
+    {
+        var completed = _manager.Jobs.Where(job => job.IsCompleted).ToArray();
+        if (completed.Length == 0)
+        {
+            SetStatus(L("NoCompletedMessage"));
+            return;
+        }
+
+        if (MessageBox.Show(
+                this,
+                string.Format(L("ConfirmClearCompletedMessage"), completed.Length),
+                L("ConfirmClearCompletedTitle"),
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        foreach (var job in completed)
+        {
+            await _manager.RemoveAsync(job);
+        }
+
+        SetStatus(string.Format(L("ClearCompletedFormat"), completed.Length));
+        UpdateCommandStates();
+    }
+
+    private void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e) =>
+        _jobsView?.Refresh();
+
+    private void OpenLogsButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Directory.CreateDirectory(DiagnosticsLog.DirectoryPath);
+            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{DiagnosticsLog.DirectoryPath}\"")
+            {
+                UseShellExecute = true
+            });
+        }
+        catch (Exception exception)
+        {
+            ShowMessage(
+                L("OpenLogsButton"),
+                string.Format(L("OpenFileFailedFormat"), exception.Message),
                 MessageBoxImage.Error);
         }
     }
 
-    private async void StartDownload_Click(object sender, RoutedEventArgs e)
+    private void JobsGrid_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (!Uri.TryCreate(UrlTextBox.Text.Trim(), UriKind.Absolute, out var uri) ||
+        if (e.OriginalSource is not DependencyObject source)
+        {
+            return;
+        }
+
+        if (ItemsControl.ContainerFromElement(JobsGrid, source) is DataGridRow row &&
+            row.Item is DownloadJob job &&
+            !JobsGrid.SelectedItems.Contains(job))
+        {
+            JobsGrid.SelectedItem = job;
+        }
+    }
+
+    private void ContextOpenFile_Click(object sender, RoutedEventArgs e) => OpenSelectedFile();
+
+    private void ContextOpenFolder_Click(object sender, RoutedEventArgs e) => OpenSelectedFolder();
+
+    private void ContextCopyUrl_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedJob is not { } job)
+        {
+            return;
+        }
+
+        try
+        {
+            Clipboard.SetText(job.SourceUri.ToString());
+            SetStatus(L("UrlCopied"));
+        }
+        catch
+        {
+            // Clipboard can be locked by another process.
+        }
+    }
+
+    private void ContextCopyDetails_Click(object sender, RoutedEventArgs e) =>
+        CopySelectedDetails();
+
+    private async void ContextEditUrl_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedJob is not { } job)
+        {
+            return;
+        }
+
+        if (job.Session is not null)
+        {
+            ShowMessage(
+                L("EditUrlTitle"),
+                L("EditUrlUnavailableMessage"),
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var value = TextPromptWindow.Prompt(
+            this,
+            L("EditUrlTitle"),
+            L("EditUrlLabel"),
+            job.SourceUri.ToString());
+        if (value is null)
+        {
+            return;
+        }
+
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) ||
             !DownloadUrlValidator.IsSupported(uri))
         {
-            StatusTextBlock.Text = "請輸入有效的 HTTP 或 HTTPS 網址。";
-            MessageBox.Show(
-                this,
-                "網址格式不正確，請輸入直接下載檔案的 HTTP 或 HTTPS 網址。",
-                "無效網址",
-                MessageBoxButton.OK,
+            ShowMessage(
+                L("InvalidUrlTitle"),
+                L("InvalidUrlMessage"),
                 MessageBoxImage.Warning);
             return;
         }
 
-        if (!int.TryParse(
-                ConnectionCountComboBox.SelectedValue?.ToString(),
-                out var requestedConnectionCount))
+        if (!await _manager.ReplaceUrlAsync(job, uri))
         {
-            StatusTextBlock.Text = "連線數設定無效。";
+            ShowMessage(
+                L("EditUrlTitle"),
+                job.Session is not null
+                    ? L("EditUrlUnavailableMessage")
+                    : L("EditUrlDuplicateMessage"),
+                MessageBoxImage.Information);
             return;
         }
-        StartDownloadButton.IsEnabled = false;
-        CancelDownloadButton.IsEnabled = true;
-        var cancellation = new CancellationTokenSource();
-        _downloadCancellation = cancellation;
-        DownloadProgressBar.Value = 0;
-        DownloadProgressBar.IsIndeterminate = false;
-        PercentageTextBlock.Text = "0%";
-        FileTextBlock.Text = "File: Preparing...";
-        ServerTextBlock.Text = "伺服器：探測中...";
-        FileSizeTextBlock.Text = "檔案大小：探測中...";
-        RangeSupportTextBlock.Text = "Range：探測中...";
-        DownloadModeTextBlock.Text = "下載模式：單連線下載";
-        DownloadedTextBlock.Text = "Downloaded: 0 B / checking total size...";
-        SpeedTextBlock.Text = "Speed: 0 B/s";
-        StatusTextBlock.Text = "Status: Checking server range support...";
 
-        try
-        {
-            var metadata = await _httpProbe.ProbeAsync(uri, cancellation.Token);
-            FileTextBlock.Text = $"File: {metadata.FileName}";
-            ServerTextBlock.Text = metadata.StatusCode.HasValue
-                ? $"伺服器：{metadata.FinalUri.Host} (HTTP {(int)metadata.StatusCode.Value})"
-                : $"伺服器：{metadata.FinalUri.Host} (探測結果未知)";
-            FileSizeTextBlock.Text = metadata.ContentLength.HasValue
-                ? $"檔案大小：{FormatBytes(metadata.ContentLength.Value)}"
-                : "檔案大小：未知";
-            RangeSupportTextBlock.Text = $"Range：{GetRangeSupportText(metadata.RangeSupport)}";
-            var segmentCount = DownloadEngine.GetSegmentCount(metadata, requestedConnectionCount);
-            DownloadModeTextBlock.Text = segmentCount > 1
-                ? $"下載模式：{segmentCount} 段分段下載"
-                : "下載模式：單連線下載";
-            SegmentStatusTextBlock.Text = segmentCount > 1
-                ? $"Segments：{segmentCount} 段等待開始"
-                : "Segment：單連線模式";
-            StatusTextBlock.Text = "Status: Server checked. Starting download...";
-            StatusTextBlock.Text = "Status: Downloading...";
-            _activeSession = metadata.RangeSupport == ByteRangeSupport.Supported &&
-                             metadata.ContentLength is > 0
-                ? _downloadEngine.CreateSession(metadata, requestedConnectionCount)
-                : null;
-            _activeEntry = _activeSession is null
-                ? new DownloadListEntry(
-                    Guid.NewGuid(),
-                    metadata.FileName,
-                    metadata.ContentLength.HasValue
-                        ? FormatBytes(metadata.ContentLength.Value)
-                        : "未知",
-                    "0%",
-                    "Downloading",
-                    1,
-                    string.Empty,
-                    null)
-                : CreateListEntry(_activeSession);
-            _downloadRows.Insert(0, _activeEntry);
-            if (_activeSession is not null)
-            {
-                _activeSession.Status = DownloadSessionStatus.Downloading;
-                _downloadHistory.Add(_activeSession);
-                await _downloadDatabase.SaveSessionAsync(_activeSession, cancellation.Token);
-            }
-            _activeEntry.Status = "Downloading";
-            _activeEntry.ConnectionCount = segmentCount;
-            PauseDownloadButton.IsEnabled = _activeSession is not null;
-            var outputPath = _activeSession is null
-                ? await _downloadEngine.DownloadAsync(
-                    metadata,
-                    CreateProgressReporter(_activeEntry),
-                    cancellation.Token,
-                    requestedConnectionCount)
-                : await DownloadSessionWithCheckpointsAsync(
-                    _activeSession,
-                    CreateProgressReporter(_activeEntry),
-                    cancellation.Token);
-            if (_activeSession is not null)
-            {
-                await _downloadDatabase.SaveSessionAsync(_activeSession);
-            }
-            DownloadProgressBar.IsIndeterminate = false;
-            DownloadProgressBar.Value = 100;
-            PercentageTextBlock.Text = "100%";
-            FileTextBlock.Text = $"File: {Path.GetFileName(outputPath)}";
-            StatusTextBlock.Text = $"Status: Download complete - {outputPath}";
-            _activeEntry.Status = "Completed";
-            _activeEntry.Progress = "100%";
-            _activeEntry.Speed = "0 B/s";
-            _activeEntry.Eta = "—";
-            _activeEntry.TargetPath = outputPath;
-            ResumeDownloadButton.IsEnabled = false;
-        }
-        catch (OperationCanceledException)
-        {
-            DownloadProgressBar.IsIndeterminate = false;
-            if (_activeSession?.Status == DownloadSessionStatus.Paused)
-            {
-                await _downloadDatabase.SaveSessionAsync(_activeSession);
-                StatusTextBlock.Text = "Status: Paused. Press Continue to resume.";
-                if (_activeEntry is not null)
-                {
-                    _activeEntry.Status = "Paused";
-                }
-                ResumeDownloadButton.IsEnabled = true;
-            }
-            else
-            {
-                if (_activeSession is not null)
-                {
-                    await _downloadDatabase.SaveSessionAsync(_activeSession);
-                }
-                StatusTextBlock.Text = "Status: Download cancelled.";
-                if (_activeEntry is not null)
-                {
-                    _activeEntry.Status = "Cancelled";
-                }
-                ResumeDownloadButton.IsEnabled = false;
-            }
-        }
-        catch (Exception exception)
-        {
-            if (_activeSession is not null)
-            {
-                _activeSession.Status = DownloadSessionStatus.Failed;
-                await _downloadDatabase.SaveSessionAsync(_activeSession);
-            }
-            if (_activeEntry is not null)
-            {
-                _activeEntry.Status = "Failed";
-            }
+        SetStatus(L("UrlUpdatedMessage"));
+        UpdateCommandStates();
+    }
 
-            DownloadProgressBar.IsIndeterminate = false;
-            StatusTextBlock.Text = "Status: Download failed.";
-            MessageBox.Show(
-                this,
-                $"Download failed: {exception.Message}",
-                "Download error",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
-        }
-        finally
+    private void ContextRetry_Click(object sender, RoutedEventArgs e) => RetryButton_Click(sender, e);
+
+    private void ContextCancel_Click(object sender, RoutedEventArgs e) => CancelButton_Click(sender, e);
+
+    private async void ContextRemove_Click(object sender, RoutedEventArgs e) =>
+        await RemoveSelectedAsync(deleteFiles: false);
+
+    private async void ContextDeleteFile_Click(object sender, RoutedEventArgs e) =>
+        await RemoveSelectedAsync(deleteFiles: true);
+
+    private void OpenFileButton_Click(object sender, RoutedEventArgs e) => OpenSelectedFile();
+
+    private void JobsGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (SelectedJob is { IsCompleted: true })
         {
-            _downloadCancellation = null;
-            cancellation.Dispose();
-            CancelDownloadButton.IsEnabled = false;
-            PauseDownloadButton.IsEnabled = false;
-            StartDownloadButton.IsEnabled = _activeSession?.Status != DownloadSessionStatus.Paused;
+            OpenSelectedFile();
         }
     }
 
-    private IProgress<DownloadProgress> CreateProgressReporter(DownloadListEntry listEntry) =>
-        new Progress<DownloadProgress>(update =>
-        {
-            FileTextBlock.Text = $"File: {update.FileName}";
-            DownloadedTextBlock.Text = update.TotalBytes.HasValue
-                ? $"Downloaded: {FormatBytes(update.BytesDownloaded)} / {FormatBytes(update.TotalBytes.Value)}"
-                : $"Downloaded: {FormatBytes(update.BytesDownloaded)} / total size unknown";
-            SpeedTextBlock.Text = $"Speed: {FormatBytes(update.BytesPerSecond)}/s";
-            DownloadModeTextBlock.Text = update.SegmentCount > 1
-                ? $"下載模式：{update.SegmentCount} 段分段下載（活動連線：{update.ActiveConnectionCount}）"
-                : "下載模式：單連線下載";
-            if (update.Segments is { Count: > 0 } segments)
-            {
-                SegmentStatusTextBlock.Text = string.Join(
-                    Environment.NewLine,
-                    segments.Select(segment =>
-                        $"Segment {segment.Index}：{segment.Status} " +
-                        $"({FormatBytes(segment.BytesDownloaded)} / {FormatBytes(segment.ExpectedLength)})"));
-            }
-
-            if (update.Percentage.HasValue)
-            {
-                DownloadProgressBar.IsIndeterminate = false;
-                DownloadProgressBar.Value = update.Percentage.Value;
-                PercentageTextBlock.Text = $"{update.Percentage.Value:0.#}%";
-            }
-            else
-            {
-                DownloadProgressBar.IsIndeterminate = true;
-                PercentageTextBlock.Text = "Total size unknown";
-            }
-
-            listEntry.Size = update.TotalBytes.HasValue
-                ? FormatBytes(update.TotalBytes.Value)
-                : "未知";
-            listEntry.Progress = update.Percentage.HasValue
-                ? $"{update.Percentage.Value:0.#}%"
-                : FormatBytes(update.BytesDownloaded);
-            listEntry.Speed = $"{FormatBytes(update.BytesPerSecond)}/s";
-            listEntry.ConnectionCount = update.SegmentCount;
-            listEntry.Status = "Downloading";
-            listEntry.Eta = update.TotalBytes.HasValue && update.BytesPerSecond > 0
-                ? FormatDuration(TimeSpan.FromSeconds(
-                    Math.Max(0, update.TotalBytes.Value - update.BytesDownloaded) /
-                    update.BytesPerSecond))
-                : "—";
-        });
-
-    private async void ResumeDownload_Click(object sender, RoutedEventArgs e)
+    private void OpenSelectedFile()
     {
-        var session = (DownloadListDataGrid.SelectedItem as DownloadListEntry)?.Session ??
-                      _activeSession;
-        if (session is null ||
-            session.Status is not (DownloadSessionStatus.Paused or DownloadSessionStatus.Recoverable))
+        if (SelectedJob?.TargetPath is not { Length: > 0 } path)
         {
             return;
         }
 
-        var cancellation = new CancellationTokenSource();
-        _downloadCancellation = cancellation;
-        _activeSession = session;
-        _activeEntry = DownloadListDataGrid.SelectedItem as DownloadListEntry ??
-                       _downloadRows.FirstOrDefault(entry => entry.Id == session.Id);
-        ResumeDownloadButton.IsEnabled = false;
-        StartDownloadButton.IsEnabled = false;
-        CancelDownloadButton.IsEnabled = true;
-        PauseDownloadButton.IsEnabled = true;
+        if (!File.Exists(path))
+        {
+            ShowMessage(L("OpenFileButton"), path, MessageBoxImage.Warning);
+            return;
+        }
+
         try
         {
-            StatusTextBlock.Text = "Status: Rechecking source before resume...";
-            var currentMetadata = await _httpProbe.ProbeAsync(
-                session.Metadata.FinalUri,
-                cancellation.Token);
-            session.EnsureSourceUnchanged(currentMetadata);
-            if (currentMetadata.RangeSupport != ByteRangeSupport.Supported ||
-                currentMetadata.ContentLength != session.Metadata.ContentLength)
-            {
-                throw new InvalidOperationException(
-                    "無法確認來源仍支援相同的 Range 與檔案大小，已停止續傳。");
-            }
-
-            StatusTextBlock.Text = "Status: Resuming download...";
-            session.Status = DownloadSessionStatus.Downloading;
-            await _downloadDatabase.SaveSessionAsync(session, cancellation.Token);
-            var outputPath = await DownloadSessionWithCheckpointsAsync(
-                session,
-                _activeEntry is null ? CreateProgressReporter(CreateListEntry(session)) : CreateProgressReporter(_activeEntry),
-                cancellation.Token);
-            await _downloadDatabase.SaveSessionAsync(session);
-            FileTextBlock.Text = $"File: {Path.GetFileName(outputPath)}";
-            StatusTextBlock.Text = $"Status: Download complete - {outputPath}";
-            if (_activeEntry is not null)
-            {
-                _activeEntry.Status = "Completed";
-                _activeEntry.Progress = "100%";
-                _activeEntry.TargetPath = outputPath;
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            await _downloadDatabase.SaveSessionAsync(session);
-            StatusTextBlock.Text = session.Status == DownloadSessionStatus.Paused
-                ? "Status: Paused. Press Continue to resume."
-                : "Status: Download cancelled.";
-            if (_activeEntry is not null)
-            {
-                _activeEntry.Status = session.Status.ToString();
-            }
-            ResumeDownloadButton.IsEnabled = session.Status == DownloadSessionStatus.Paused;
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
         }
         catch (Exception exception)
         {
-            session.Status = DownloadSessionStatus.Failed;
-            await _downloadDatabase.SaveSessionAsync(session);
-            if (_activeEntry is not null)
-            {
-                _activeEntry.Status = "Failed";
-            }
-            StatusTextBlock.Text = "Status: Download failed.";
-            MessageBox.Show(
-                this,
-                $"Download failed: {exception.Message}",
-                "Download error",
-                MessageBoxButton.OK,
+            ShowMessage(
+                L("OpenFileButton"),
+                string.Format(L("OpenFileFailedFormat"), exception.Message),
                 MessageBoxImage.Error);
-        }
-        finally
-        {
-            _downloadCancellation = null;
-            cancellation.Dispose();
-            CancelDownloadButton.IsEnabled = false;
-            PauseDownloadButton.IsEnabled = false;
-            StartDownloadButton.IsEnabled = session.Status != DownloadSessionStatus.Paused;
         }
     }
 
-    private async Task<string> DownloadSessionWithCheckpointsAsync(
-        DownloadSession session,
-        IProgress<DownloadProgress> progress,
-        CancellationToken cancellationToken)
+    private void OpenFolderButton_Click(object sender, RoutedEventArgs e) => OpenSelectedFolder();
+
+    private void OpenSelectedFolder()
     {
-        using var checkpointCancellation = new CancellationTokenSource();
-        var downloadTask = _downloadEngine.DownloadAsync(session, progress, cancellationToken);
-        var checkpointTask = CheckpointSessionAsync(session, checkpointCancellation.Token);
+        string? path = null;
+        var job = SelectedJob;
+        if (job?.TargetPath is { Length: > 0 } target)
+        {
+            path = Path.GetDirectoryName(target);
+        }
+
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            path = _settings.DownloadDirectory;
+        }
+
+        if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+        {
+            ShowMessage(L("OpenFolderButton"), L("FolderMissingMessage"), MessageBoxImage.Information);
+            return;
+        }
+
         try
         {
-            var firstTask = await Task.WhenAny(downloadTask, checkpointTask);
-            if (firstTask == checkpointTask)
+            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{path}\"") { UseShellExecute = true });
+        }
+        catch (Exception exception)
+        {
+            ShowMessage(
+                L("OpenFolderButton"),
+                string.Format(L("OpenFileFailedFormat"), exception.Message),
+                MessageBoxImage.Error);
+        }
+    }
+
+    private void CopySelectedDetails()
+    {
+        var jobs = SelectedJobs;
+        if (jobs.Count == 0)
+        {
+            return;
+        }
+
+        if (jobs.Count == 1 && jobs[0] is { } job)
+        {
+            var lines = new List<string>
             {
-                await checkpointTask;
+                $"{L("ColumnFile")}: {job.FileName}",
+                $"{L("SourceLabel")}: {job.SourceUri}",
+                $"{L("TargetLabel")}: {job.TargetPath ?? L("StatusQueued")}",
+                $"{L("ColumnStatus")}: {job.StatusText}",
+                $"{L("ColumnProgress")}: {job.ProgressText}",
+                $"{L("ColumnSpeed")}: {job.SpeedText}",
+                $"{L("ConnectionsDetailLabel")}: {job.ConnectionCount}",
+                $"{L("SegmentsLabel")}: {job.SegmentCount}",
+                $"{L("ColumnBuffer")}: {job.BufferModeText}"
+            };
+            if (!string.IsNullOrWhiteSpace(job.ErrorDetailsText))
+            {
+                lines.Add($"{L("ErrorLabel")}: {job.ErrorDetailsText}");
             }
 
-            return await downloadTask;
+            try
+            {
+                Clipboard.SetText(string.Join(Environment.NewLine, lines));
+                SetStatus(L("DetailsCopied"));
+            }
+            catch
+            {
+                // Clipboard can be locked by another process.
+            }
+
+            return;
+        }
+
+        try
+        {
+            Clipboard.SetText(string.Join(
+                Environment.NewLine,
+                jobs.Select(job => $"{job.FileName} | {job.StatusText} | {job.ProgressText} | {job.SourceUri}")));
+            SetStatus(L("DetailsCopied"));
         }
         catch
         {
-            session.Pause();
-            try
+            // Clipboard can be locked by another process.
+        }
+    }
+
+    private void CopyDetailsButton_Click(object sender, RoutedEventArgs e) => CopySelectedDetails();
+
+    private void PauseAllButton_Click(object sender, RoutedEventArgs e)
+    {
+        _manager.PauseAll();
+        UpdateCommandStates();
+    }
+
+    private void ResumeAllButton_Click(object sender, RoutedEventArgs e)
+    {
+        _manager.ResumeAll();
+        UpdateCommandStates();
+    }
+
+    private void JobsGrid_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
+        UpdateCommandStates();
+
+    private void Timer_Tick(object? sender, EventArgs e)
+    {
+        var jobs = _manager.Jobs;
+        var active = 0;
+        var activeConnections = 0;
+        double speed = 0;
+        double percentageTotal = 0;
+
+        foreach (var job in jobs)
+        {
+            if (job.Status == DownloadSessionStatus.Downloading)
             {
-                await downloadTask;
+                activeConnections += job.ActiveConnections;
+                speed += job.BytesPerSecond;
+                percentageTotal += job.Percentage ?? 0;
             }
-            catch (OperationCanceledException)
+        }
+
+        active = _manager.Jobs.Count(j => j.Status == DownloadSessionStatus.Downloading);
+
+        ActiveSummaryTextBlock.Text = active > 0
+            ? string.Format(L("ActiveDownloadsFormat"), active)
+            : string.Empty;
+        SpeedSummaryTextBlock.Text = speed > 0
+            ? string.Format(L("TotalSpeedFormat"), FormatBytes(speed))
+            : string.Empty;
+        ConnectionSummaryTextBlock.Text = activeConnections > 0
+            ? string.Format(L("GlobalConnectionsFormat"), activeConnections)
+            : string.Empty;
+
+        if (TaskbarProgress is not null)
+        {
+            if (active > 0)
             {
+                TaskbarProgress.ProgressState = TaskbarItemProgressState.Normal;
+                TaskbarProgress.ProgressValue = Math.Clamp(
+                    percentageTotal / active / 100d,
+                    0,
+                    1);
             }
-
-            throw;
-        }
-        finally
-        {
-            checkpointCancellation.Cancel();
-            try
+            else
             {
-                await checkpointTask;
-            }
-            catch (OperationCanceledException)
-            {
+                TaskbarProgress.ProgressState = TaskbarItemProgressState.None;
+                TaskbarProgress.ProgressValue = 0;
             }
         }
+
+        UpdateCommandStates();
     }
 
-    private async Task CheckpointSessionAsync(
-        DownloadSession session,
-        CancellationToken cancellationToken)
+    private void UpdateCommandStates()
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
-        while (await timer.WaitForNextTickAsync(cancellationToken))
-        {
-            await _downloadDatabase.SaveSessionAsync(session, cancellationToken);
-        }
+        var jobs = SelectedJobs;
+        var job = SelectedJob;
+        var hasSelection = jobs.Count > 0;
+        var single = jobs.Count == 1 ? jobs[0] : null;
+
+        PauseButton.IsEnabled = jobs.Any(j => j.CanPause);
+        ResumeButton.IsEnabled = jobs.Any(j => j.CanResume);
+        CancelButton.IsEnabled = jobs.Any(j => j.CanCancel);
+        RetryButton.IsEnabled = jobs.Any(j => j.CanRetry);
+        RemoveButton.IsEnabled = hasSelection;
+        OpenFileButton.IsEnabled = single?.TargetPath is { Length: > 0 } path && File.Exists(path);
+        OpenFolderButton.IsEnabled = hasSelection;
+        CopyDetailsButton.IsEnabled = hasSelection;
+        ClearCompletedButton.IsEnabled = _manager.Jobs.Any(j => j.IsCompleted);
     }
 
-    private void PauseDownload_Click(object sender, RoutedEventArgs e)
+    private bool FilterJob(object item)
     {
-        if (_activeSession is null)
+        if (item is not DownloadJob job)
         {
-            StatusTextBlock.Text = "此下載模式不支援續傳；可取消後重新開始。";
-            return;
+            return false;
         }
 
-        PauseDownloadButton.IsEnabled = false;
-        ResumeDownloadButton.IsEnabled = false;
-        StatusTextBlock.Text = "Status: Pausing...";
-        _activeSession.Pause();
+        var filter = SearchTextBox?.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(filter))
+        {
+            return true;
+        }
+
+        return job.FileName.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+               job.SourceUri.ToString().Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+               job.StatusText.Contains(filter, StringComparison.OrdinalIgnoreCase);
     }
 
-    private async void CancelDownload_Click(object sender, RoutedEventArgs e)
+    private void ApplyColumnWidths()
     {
-        CancelDownloadButton.IsEnabled = false;
-        StatusTextBlock.Text = "Status: Cancelling download...";
-        if (_activeSession?.Status == DownloadSessionStatus.Paused)
-        {
-            if (File.Exists(_activeSession.PartPath))
-            {
-                File.Delete(_activeSession.PartPath);
-            }
-
-            _activeSession.Status = DownloadSessionStatus.Cancelled;
-            await _downloadDatabase.SaveSessionAsync(_activeSession);
-            var entry = _downloadRows.FirstOrDefault(item => item.Id == _activeSession.Id);
-            if (entry is not null)
-            {
-                entry.Status = "Cancelled";
-            }
-            _activeSession = null;
-            ResumeDownloadButton.IsEnabled = false;
-            StartDownloadButton.IsEnabled = true;
-            StatusTextBlock.Text = "Status: Download cancelled.";
-            return;
-        }
-
-        _downloadCancellation?.Cancel();
-    }
-
-    private DownloadListEntry CreateListEntry(DownloadSession session)
-    {
-        var downloaded = session.Segments.Sum(segment => segment.BytesDownloaded);
-        var total = session.Metadata.ContentLength!.Value;
-        var percentage = total > 0 ? downloaded * 100d / total : 0;
-        return new DownloadListEntry(
-            session.Id,
-            session.FileName,
-            FormatBytes(total),
-            session.Status == DownloadSessionStatus.Completed ? "100%" : $"{percentage:0.#}%",
-            session.Status.ToString(),
-            session.ConnectionCount,
-            session.FinalPath,
-            session);
-    }
-
-    private void DownloadList_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        var entry = DownloadListDataGrid.SelectedItem as DownloadListEntry;
-        var session = entry?.Session;
-        ResumeDownloadButton.IsEnabled = _downloadCancellation is null &&
-            session?.Status is DownloadSessionStatus.Paused or DownloadSessionStatus.Recoverable;
-        PauseDownloadButton.IsEnabled = _downloadCancellation is not null &&
-            ReferenceEquals(session, _activeSession) &&
-            session?.Status == DownloadSessionStatus.Downloading;
-        CancelDownloadButton.IsEnabled = session?.Status == DownloadSessionStatus.Paused &&
-            _downloadCancellation is null;
-    }
-
-    private async void DeleteRecord_Click(object sender, RoutedEventArgs e)
-    {
-        if (DownloadListDataGrid.SelectedItem is not DownloadListEntry entry)
-        {
-            return;
-        }
-
-        if (entry.Session is { } session)
-        {
-            if (File.Exists(session.PartPath))
-            {
-                var removePartial = MessageBox.Show(
-                    this,
-                    "此紀錄有未完成的 .part 檔案。是否一併刪除該暫存檔？",
-                    "刪除下載紀錄",
-                    MessageBoxButton.YesNoCancel,
-                    MessageBoxImage.Question);
-                if (removePartial == MessageBoxResult.Cancel)
-                {
-                    return;
-                }
-
-                if (removePartial == MessageBoxResult.Yes)
-                {
-                    File.Delete(session.PartPath);
-                }
-            }
-
-            await _downloadDatabase.DeleteSessionAsync(session.Id);
-            _downloadHistory.Remove(session);
-        }
-
-        _downloadRows.Remove(entry);
-        if (ReferenceEquals(_activeEntry, entry))
-        {
-            _activeEntry = null;
-            _activeSession = null;
-        }
-    }
-
-    private void OpenFolder_Click(object sender, RoutedEventArgs e)
-    {
-        var entry = DownloadListDataGrid.SelectedItem as DownloadListEntry;
-        var path = entry?.TargetPath;
-        var folder = !string.IsNullOrWhiteSpace(path)
-            ? Path.GetDirectoryName(path)
-            : _settings.DownloadDirectory;
-        if (string.IsNullOrWhiteSpace(folder))
-        {
-            folder = _settings.DownloadDirectory;
-        }
-
-        Directory.CreateDirectory(folder);
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = folder,
-            UseShellExecute = true
-        });
-    }
-
-    private void ToggleSettings_Click(object sender, RoutedEventArgs e) =>
-        SettingsExpander.IsExpanded = !SettingsExpander.IsExpanded;
-
-    private async void SaveSettings_Click(object sender, RoutedEventArgs e)
-    {
-        if (!int.TryParse(MaximumConcurrentTextBox.Text, out var maximumConcurrent) ||
-            maximumConcurrent is < 1 or > 64 ||
-            !int.TryParse(GlobalConnectionLimitTextBox.Text, out var globalConnectionLimit) ||
-            globalConnectionLimit is < 1 or > DownloadEngine.MaximumSegmentCount ||
-            !int.TryParse(ConnectionCountComboBox.SelectedValue?.ToString(), out var connections) ||
-            string.IsNullOrWhiteSpace(SettingsDownloadDirectoryTextBox.Text))
-        {
-            StatusTextBlock.Text = "設定無效：請確認下載路徑、連線數與同時下載數。";
-            return;
-        }
-
         try
         {
-            var settings = new HyperDLSettings
+            if (_settings.ColumnWidths.Count == 0)
             {
-                DownloadDirectory = Path.GetFullPath(SettingsDownloadDirectoryTextBox.Text.Trim()),
+                return;
+            }
+
+            var columns = GridColumns;
+            foreach (var column in columns)
+            {
+                var name = column.GetType().GetProperty("Name")?.GetValue(column)?.ToString();
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    continue;
+                }
+
+                if (_settings.ColumnWidths.TryGetValue(name, out var width) &&
+                    width > 10)
+                {
+                    column.Width = new DataGridLength(width);
+                }
+            }
+        }
+        catch
+        {
+            // Column widths are best effort.
+        }
+    }
+
+    private void SaveColumnWidths()
+    {
+        try
+        {
+            var widths = new Dictionary<string, double>();
+            foreach (var column in GridColumns)
+            {
+                var name = column.GetType().GetProperty("Name")?.GetValue(column)?.ToString();
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    continue;
+                }
+
+                if (column.ActualWidth > 10)
+                {
+                    widths[name] = column.ActualWidth;
+                }
+            }
+
+            _settings = _settings with { ColumnWidths = widths };
+        }
+        catch
+        {
+            // Best effort.
+        }
+    }
+
+
+    private void SettingsButton_Click(object sender, RoutedEventArgs e) => OpenSettings();
+
+    private void OpenSettings()
+    {
+        FolderTextBox.Text = _settings.DownloadDirectory;
+        SelectComboByTag(ConnectionsComboBox, _settings.ConnectionCount.ToString());
+        SelectComboByTag(ConcurrentComboBox, _settings.MaximumConcurrentDownloads.ToString());
+        SelectComboByTag(BufferModeComboBox, _settings.BufferMode.ToString());
+        PerHostTextBox.Text = _settings.MaxConnectionsPerHost.ToString();
+        SpeedLimitTextBox.Text = _settings.SpeedLimitKBps.ToString();
+        DynamicSegmentationCheckBox.IsChecked = _settings.DynamicSegmentation;
+        AutoResumeCheckBox.IsChecked = _settings.AutoResume;
+        ConfirmExternalCheckBox.IsChecked = _settings.ConfirmExternalDownloads;
+        SettingsOverlay.Visibility = Visibility.Visible;
+        FolderTextBox.Focus();
+    }
+
+    private void CloseSettingsButton_Click(object sender, RoutedEventArgs e) =>
+        SettingsOverlay.Visibility = Visibility.Collapsed;
+
+    private void BrowseFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = L("DownloadFolderLabel"),
+            InitialDirectory = Directory.Exists(FolderTextBox.Text)
+                ? FolderTextBox.Text
+                : _settings.DownloadDirectory
+        };
+        if (dialog.ShowDialog(this) == true)
+        {
+            FolderTextBox.Text = dialog.FolderName;
+        }
+    }
+
+    private async void SaveSettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var folder = FolderTextBox.Text.Trim();
+            if (string.IsNullOrWhiteSpace(folder))
+            {
+                throw new InvalidDataException(L("DownloadFolderLabel"));
+            }
+
+            Directory.CreateDirectory(folder);
+
+            if (!int.TryParse(PerHostTextBox.Text.Trim(), out var perHost) ||
+                perHost is < 0 or > DownloadEngine.MaximumSegmentCount)
+            {
+                throw new InvalidDataException(L("PerHostLabel"));
+            }
+
+            var connections = ReadComboTag(ConnectionsComboBox, "0");
+            var concurrent = ReadComboTag(ConcurrentComboBox, "2");
+            var bufferTag =
+                (BufferModeComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ??
+                BufferMode.Auto.ToString();
+            if (!BufferModeSizing.TryParse(bufferTag, out var bufferMode))
+            {
+                bufferMode = BufferMode.Auto;
+            }
+
+            if (!int.TryParse(SpeedLimitTextBox.Text.Trim(), out var speedLimit) ||
+                speedLimit is < 0 or > 1_000_000)
+            {
+                speedLimit = 0;
+            }
+
+            var engineChanged =
+                !string.Equals(folder, _settings.DownloadDirectory, StringComparison.OrdinalIgnoreCase) ||
+                perHost != _settings.MaxConnectionsPerHost;
+
+            var updated = _settings with
+            {
+                DownloadDirectory = folder,
                 ConnectionCount = connections,
-                MaximumConcurrentDownloads = maximumConcurrent,
-                GlobalConnectionLimit = globalConnectionLimit,
-                LowRamMode = LowRamModeCheckBox.IsChecked == true,
-                LegalUseAcknowledged = _settings.LegalUseAcknowledged
+                MaximumConcurrentDownloads = concurrent,
+                BufferMode = bufferMode,
+                MaxConnectionsPerHost = perHost,
+                DynamicSegmentation = DynamicSegmentationCheckBox.IsChecked == true,
+                AutoResume = AutoResumeCheckBox.IsChecked == true,
+                ConfirmExternalDownloads = ConfirmExternalCheckBox.IsChecked == true,
+                SpeedLimitKBps = speedLimit,
+                WindowWidth = Width,
+                WindowHeight = Height,
+                WindowLeft = Left,
+                WindowTop = Top
             };
-            await UserSettingsStore.SaveAsync(settings);
-            _settings = settings;
-            GlobalConnectionLimiter.Shared.SetLimit(settings.GlobalConnectionLimit);
-            _downloadEngine = new DownloadEngine(
-                downloadDirectory: settings.DownloadDirectory,
-                lowRamMode: settings.LowRamMode);
-            StatusTextBlock.Text = "設定已儲存。佇列工作目前依序執行。";
+
+            UserSettingsStore.Validate(updated);
+            await UserSettingsStore.SaveAsync(updated);
+
+            _settings = updated;
+            _manager.Settings = updated;
+            GlobalConnectionLimiter.Shared.SetLimit(updated.GlobalConnectionLimit);
+            _engine.SetSpeedLimit(updated.SpeedLimitKBps);
+            if (engineChanged)
+            {
+                _engine = CreateEngine(updated);
+                _manager.UpdateEngine(_engine);
+            }
+
+            SettingsOverlay.Visibility = Visibility.Collapsed;
+            SetStatus(L("SettingsSavedMessage"));
         }
         catch (Exception exception)
         {
-            StatusTextBlock.Text = "無法儲存設定。";
-            MessageBox.Show(
-                this,
+            ShowMessage(
+                L("SettingsTitle"),
                 exception.Message,
-                "設定錯誤",
-                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
+    private void RegisterProtocolButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            ProtocolRegistration.Register();
+            ShowMessage(
+                L("BrowserRegisteredTitle"),
+                L("BrowserRegisteredMessage"),
+                MessageBoxImage.Information);
+        }
+        catch (Exception exception)
+        {
+            ShowMessage(
+                L("BrowserRegisteredTitle"),
+                string.Format(L("BrowserRegisterFailedFormat"), exception.Message),
                 MessageBoxImage.Error);
         }
     }
 
-    private static string FormatDuration(TimeSpan duration)
+    private void LanguageComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (duration.TotalDays >= 1)
+        if (_initializing || LanguageComboBox.SelectedItem is not ComboBoxItem item)
         {
-            return $"{(int)duration.TotalDays}d {duration.Hours}h";
+            return;
         }
 
-        return duration.TotalHours >= 1
-            ? $"{(int)duration.TotalHours}h {duration.Minutes}m"
-            : $"{duration.Minutes}m {duration.Seconds}s";
+        var tag = item.Tag?.ToString();
+        if (!Enum.TryParse<AppLanguage>(tag, ignoreCase: true, out var language))
+        {
+            return;
+        }
+
+        _settings = _settings with { Language = language };
+        LocalizationManager.Instance.Apply(language);
+        ApplyLocalization();
+        _ = SaveSettingsQuietlyAsync();
     }
+
+    private void ApplyLocalization()
+    {
+        foreach (var job in _manager.Jobs)
+        {
+            job.RefreshLocalization();
+        }
+
+        UpdateCommandStates();
+    }
+
+    private void SelectLanguageItem()
+    {
+        SelectComboByTag(LanguageComboBox, _settings.Language.ToString());
+    }
+
+    private static void SelectComboByTag(ComboBox comboBox, string tag)
+    {
+        foreach (var item in comboBox.Items)
+        {
+            if (item is ComboBoxItem candidate &&
+                string.Equals(candidate.Tag?.ToString(), tag, StringComparison.OrdinalIgnoreCase))
+            {
+                comboBox.SelectedItem = candidate;
+                return;
+            }
+        }
+
+        if (comboBox.Items.Count > 0)
+        {
+            comboBox.SelectedIndex = 0;
+        }
+    }
+
+    private static int ReadComboTag(ComboBox comboBox, string fallback) =>
+        int.TryParse(
+            (comboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? fallback,
+            out var value)
+            ? value
+            : int.Parse(fallback);
+
+    private void Manager_JobCompleted(object? sender, DownloadJob job)
+    {
+        SetStatus(string.Format(L("DownloadCompleteFormat"), job.FileName));
+        UpdateCommandStates();
+    }
+
+    private void Manager_JobFailed(object? sender, DownloadJob job)
+    {
+        if (job.ErrorKind is { } kind && kind != DownloadErrorKind.Cancelled)
+        {
+            SetStatus(job.ErrorText);
+        }
+
+        UpdateCommandStates();
+    }
+
+    private void Window_DragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(DataFormats.UnicodeText) ||
+                    e.Data.GetDataPresent(DataFormats.Text)
+            ? DragDropEffects.Copy
+            : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private async void Window_Drop(object sender, DragEventArgs e)
+    {
+        var text = e.Data.GetData(DataFormats.UnicodeText) as string ??
+                   e.Data.GetData(DataFormats.Text) as string;
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            await AddTextAsync(text);
+        }
+    }
+
+    private async void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        if (_allowClose)
+        {
+            return;
+        }
+
+        e.Cancel = true;
+        _timer.Stop();
+        SaveColumnWidths();
+        _settings = _settings with
+        {
+            WindowWidth = Width,
+            WindowHeight = Height,
+            WindowLeft = Left,
+            WindowTop = Top,
+            ColumnWidths = _settings.ColumnWidths
+        };
+        await SaveSettingsQuietlyAsync();
+        try
+        {
+            await _manager.ShutdownAsync();
+            await _manager.DisposeAsync();
+        }
+        catch
+        {
+            // Closing must not throw.
+        }
+
+        _allowClose = true;
+        Close();
+    }
+
+    private void ApplyWindowBounds()
+    {
+        if (_settings.WindowWidth >= MinWidth && _settings.WindowHeight >= MinHeight)
+        {
+            Width = _settings.WindowWidth;
+            Height = _settings.WindowHeight;
+        }
+
+        if (_settings.WindowLeft is { } left && _settings.WindowTop is { } top)
+        {
+            var virtualLeft = SystemParameters.VirtualScreenLeft;
+            var virtualTop = SystemParameters.VirtualScreenTop;
+            var virtualRight = virtualLeft + SystemParameters.VirtualScreenWidth;
+            var virtualBottom = virtualTop + SystemParameters.VirtualScreenHeight;
+            if (left >= virtualLeft &&
+                top >= virtualTop &&
+                left + Width <= virtualRight &&
+                top + Height <= virtualBottom)
+            {
+                WindowStartupLocation = WindowStartupLocation.Manual;
+                Left = left;
+                Top = top;
+            }
+        }
+    }
+
+    private async Task SaveSettingsQuietlyAsync()
+    {
+        try
+        {
+            await UserSettingsStore.SaveAsync(_settings);
+        }
+        catch
+        {
+            // Settings are best effort; a read-only profile must not break downloads.
+        }
+    }
+
+    private void SetStatus(string message) => StatusMessageTextBlock.Text = message;
+
+    private void ShowMessage(string title, string message, MessageBoxImage icon) =>
+        MessageBox.Show(this, message, title, MessageBoxButton.OK, icon);
 
     private static string FormatBytes(double bytes)
     {
-        string[] units = ["B", "KB", "MB", "GB"];
-        double size = bytes;
-        var unitIndex = 0;
-
-        while (size >= 1024 && unitIndex < units.Length - 1)
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
+        var size = Math.Abs(bytes);
+        var unit = 0;
+        while (size >= 1024 && unit < units.Length - 1)
         {
             size /= 1024;
-            unitIndex++;
+            unit++;
         }
 
-        return $"{size:0.##} {units[unitIndex]}";
-    }
-
-    private static string GetRangeSupportText(ByteRangeSupport support) =>
-        support switch
-        {
-            ByteRangeSupport.Supported => "支援",
-            ByteRangeSupport.Unsupported => "不支援",
-            _ => "未知"
-        };
-
-    protected override void OnClosed(EventArgs e)
-    {
-        _downloadCancellation?.Cancel();
-        base.OnClosed(e);
+        return $"{size:0.##} {units[unit]}";
     }
 }

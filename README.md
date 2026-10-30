@@ -43,12 +43,15 @@ trademarks, or official assets.
 
 > The latest HyperDL release has been uploaded. Download it or run the new Setup to update an existing installation.
 
-- ✅ Complete: HTTP/HTTPS downloads, range probing, fixed segments, and single-connection fallback.
-- ✅ Complete: Auto and fixed connection choices, Pause, Resume, Cancel, progress, speed, and ETA.
-- ✅ Complete: SQLite download history, segment offset persistence, and loading recoverable jobs.
-- ✅ Complete: Windows x64 self-contained publishing and a per-user Inno Setup definition.
-- 🚧 Not yet verified: Downloads from different public servers, long-running large-file transfers, and multiple real-world Windows installation scenarios.
-- ❌ Not supported: FTP/FTPS, BitTorrent, dynamic segmentation, and automatic updates.
+- ✅ Complete: Dynamic segmentation (cooperative split) for eligible range-supported files ≥ 64 MiB (default on, configurable).
+- ✅ Complete: Buffer modes (`Auto`, `Low RAM`/`LowRam`, `Balanced`, `Fast`), global 64 MiB budget, per-download overrides.
+- ✅ Complete: Retry with backoff/jitter, idle-timeout protection, `If-Range` on resume, source-change detection.
+- ✅ Complete: Disk space preflight and FAT32 4 GB limit checks with localized errors.
+- ✅ Complete: Per-engine bandwidth limiter, per-host/global connection limits, concurrency gate.
+- ✅ Complete: Pending queue persistence, auto-resume on startup, graceful shutdown checkpointing.
+- ✅ Complete: Bilingual UI (English / 繁體中文) with runtime language switching, resource-based localization.
+- ✅ Complete: Chrome extension bridge via `hyperdl://` protocol (HKCU registration), CLI/single-instance IPC.
+- ✅ Complete: Multi-select, context menu, search/filter, clear completed, edit URL, delete files, open logs.
 
 Statuses describe the current code and tests, not a promise to deliver planned features.
 
@@ -85,7 +88,10 @@ Statuses describe the current code and tests, not a promise to deliver planned f
 | FTP / FTPS | ❌ Not supported | No FTP/FTPS client is implemented. |
 | BitTorrent | ❌ Not supported | Torrent and magnet downloads are unsupported. |
 | Automatic updates | ❌ Not supported | No update feed, signature verification, or update installation flow exists. |
-| Dynamic segmentation | ❌ Not supported | Segments are created before a job starts and are not split or replanned during download. |
+| Dynamic segmentation | ✅ Complete | Cooperative split for eligible files ≥ 64 MiB (configurable). |
+| Buffer modes | ✅ Complete | `Auto` / `LowRam` / `Balanced` / `Fast` with 64 MiB global budget. |
+| Browser integration | ✅ Complete | `hyperdl://` protocol + Chrome extension bridge. |
+| Localization | ✅ Complete | English and 繁體中文 (runtime switchable). |
 
 ## Memory-efficient Design
 
@@ -96,8 +102,9 @@ Network stream → bounded worker buffer → file on disk
 ```
 
 HyperDL does not load a complete file or segment into RAM and does not use a
-large `MemoryStream` to hold a download. Low RAM mode uses a 64 KiB buffer per
-worker; standard mode uses 80 KiB. Active worker counts and other system
+large `MemoryStream` to hold a download. Buffer sizes are determined by the
+selected buffer mode (`Auto`, `LowRam`, `Balanced`, or `Fast`) and are limited
+by a global 64 MiB network-buffer budget. Active worker counts and other system
 activity also affect memory, so no fixed total-RAM limit is promised.
 
 ## Connection Modes
@@ -446,13 +453,12 @@ installation directory. See “Removing all local data” for manual cleanup.
 
 ## Roadmap
 
-Possible areas for improvement; these are not implemented features or delivery commitments:
-
-- [ ] Add end-to-end tests with a controlled HTTP server and large files.
-- [ ] Improve the download list, error details, and recovery workflow.
-- [ ] Evaluate download scheduling and speed limits.
-- [ ] Improve accessibility and localization.
-- [ ] Improve the signed release and installer process.
+- [x] M0: Safety net, baseline, logging/CI foundations
+- [x] M1: Reliability (retry, idle timeout, If-Range, source-change, buffer modes, disk checks, DB WAL/UPSERT, pending queue)
+- [x] M2: Dynamic segmentation (scheduler, cooperative split, validation, adaptive)
+- [x] M3: Usability + bilingual UI (multi-download, multi-select, search/filter, context menu, edit URL, delete, logs)
+- [x] M4: Chrome extension bridge, protocol registration, publish/installer/CI updates
+- [ ] M5: Tray/Toast/MVVM toolkit, HTTP/2 tuning, SHA-256 verification, scheduling, auto-update (deferred)
 
 ## 📜 License
 

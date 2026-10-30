@@ -5,7 +5,7 @@ namespace HyperDL.Core;
 internal sealed class DownloadProgressReporter
 {
     private readonly object _sync;
-    private readonly IReadOnlyList<DownloadSegment> _segments;
+    private readonly SegmentScheduler _scheduler;
     private readonly IProgress<DownloadProgress>? _progress;
     private readonly string _fileName;
     private readonly long _totalBytes;
@@ -13,20 +13,25 @@ internal sealed class DownloadProgressReporter
     private TimeSpan _lastReportTime;
     private long _lastReportedBytes;
     private long _totalDownloaded;
+    private double _smoothedBytesPerSecond;
 
     public DownloadProgressReporter(
-        IReadOnlyList<DownloadSegment> segments,
+        SegmentScheduler scheduler,
         IProgress<DownloadProgress>? progress,
         string fileName,
         long totalBytes,
-        object? syncRoot = null)
+        object syncRoot)
     {
-        _sync = syncRoot ?? new object();
-        _segments = segments;
+        _sync = syncRoot;
+        _scheduler = scheduler;
         _progress = progress;
         _fileName = fileName;
         _totalBytes = totalBytes;
-        _totalDownloaded = segments.Sum(segment => segment.BytesDownloaded);
+        lock (_sync)
+        {
+            _totalDownloaded = scheduler.Snapshot().Sum(segment => segment.BytesDownloaded);
+        }
+
         _lastReportedBytes = _totalDownloaded;
     }
 
@@ -42,10 +47,14 @@ internal sealed class DownloadProgressReporter
             }
 
             var totalDownloaded = _totalDownloaded;
-            var speed = elapsed.TotalSeconds > 0
+            var rawSpeed = elapsed.TotalSeconds > 0
                 ? (totalDownloaded - _lastReportedBytes) / elapsed.TotalSeconds
                 : 0;
-            var segmentProgress = _segments
+            _smoothedBytesPerSecond = _smoothedBytesPerSecond <= 0
+                ? rawSpeed
+                : _smoothedBytesPerSecond * 0.7 + rawSpeed * 0.3;
+            var segments = _scheduler.Snapshot();
+            var segmentProgress = segments
                 .Select(segment => new DownloadSegmentProgress(
                     segment.Index,
                     segment.StartOffset,
@@ -56,18 +65,25 @@ internal sealed class DownloadProgressReporter
                     segment.ErrorMessage))
                 .ToArray();
 
-            _progress?.Report(new DownloadProgress(
-                _fileName,
-                totalDownloaded,
-                _totalBytes,
-                speed,
-                totalDownloaded * 100d / _totalBytes,
-                _segments.Count,
-                segmentProgress,
-                _segments.Count(segment => segment.Status == DownloadSegmentStatus.Downloading)));
-
             _lastReportTime = now;
             _lastReportedBytes = totalDownloaded;
+
+            try
+            {
+                _progress?.Report(new DownloadProgress(
+                    _fileName,
+                    totalDownloaded,
+                    _totalBytes,
+                    _smoothedBytesPerSecond,
+                    totalDownloaded * 100d / _totalBytes,
+                    segments.Count,
+                    segmentProgress,
+                    segments.Count(segment => segment.Status == DownloadSegmentStatus.Downloading)));
+            }
+            catch
+            {
+                // A poorly behaved progress consumer must never fail the download.
+            }
         }
     }
 
@@ -75,13 +91,25 @@ internal sealed class DownloadProgressReporter
     {
         lock (_sync)
         {
-            segment.BytesDownloaded += bytesWritten;
-            segment.CurrentOffset += bytesWritten;
-            _totalDownloaded += bytesWritten;
+            var writable = (int)Math.Clamp(
+                segment.EndOffset - segment.CurrentOffset + 1,
+                0,
+                bytesWritten);
+            if (writable <= 0)
+            {
+                return;
+            }
+
+            segment.BytesDownloaded += writable;
+            segment.CurrentOffset += writable;
+            _totalDownloaded += writable;
         }
     }
 
-    public void SetStatus(DownloadSegment segment, DownloadSegmentStatus status, string? errorMessage = null)
+    public void SetStatus(
+        DownloadSegment segment,
+        DownloadSegmentStatus status,
+        string? errorMessage = null)
     {
         lock (_sync)
         {

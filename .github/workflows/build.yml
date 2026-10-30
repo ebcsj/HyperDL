@@ -1,0 +1,66 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore HyperDL.sln
+
+      - name: Build (Release)
+        run: dotnet build HyperDL.sln -c Release --no-restore
+
+      - name: Test (Release)
+        run: dotnet test HyperDL.sln -c Release --no-build --logger "trx;LogFileName=test-results.trx" --results-directory artifacts/test-results
+
+      - name: Upload test results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: artifacts/test-results/**/*.trx
+          if-no-files-found: warn
+
+      - name: Publish win-x64 (self-contained)
+        if: ${{ success() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch') }}
+        run: |
+          dotnet publish HyperDL.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishTrimmed=false `
+            -o artifacts/publish/HyperDL
+          Copy-Item -LiteralPath THIRD_PARTY_NOTICES.md -Destination artifacts/publish/HyperDL -Force
+
+      - name: Upload win-x64 app
+        if: ${{ success() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: HyperDL-win-x64
+          path: artifacts/publish/HyperDL/
+          if-no-files-found: error

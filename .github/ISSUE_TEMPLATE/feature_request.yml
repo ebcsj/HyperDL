@@ -1,0 +1,26 @@
+name: Feature request
+description: Suggest a focused improvement to HyperDL.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Describe the user need this feature addresses.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety
+      options:
+        - label: This request does not involve DRM bypass, malicious code, arbitrary command execution, remote script execution, or copyright infringement.
+          required: true
