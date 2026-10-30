@@ -40,7 +40,7 @@ jobs:
 
       - name: Upload test results
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-results
           path: artifacts/test-results/**/*.trx
@@ -59,7 +59,7 @@ jobs:
 
       - name: Upload win-x64 app
         if: ${{ success() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch') }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: HyperDL-win-x64
           path: artifacts/publish/HyperDL/
