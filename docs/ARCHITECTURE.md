@@ -45,8 +45,9 @@ flowchart TD
 - Auto selects a target from the known file size. The actual count is reduced
   when the file cannot provide that many segments of at least 4 MiB each.
 - The application shares a global connection limiter across active workers.
-- Fixed ranges are persisted; dynamic splitting and adaptive connection
-  changes are not implemented.
+- The initial range layout is persisted. When dynamic segmentation is enabled,
+  idle workers can split large in-flight ranges, and the resulting segment map
+  is persisted with the session.
 - A server that rejects or does not reliably confirm ranges uses the
   single-connection fallback. Pause and resume are available only to the
   persisted segmented-download path.
@@ -55,7 +56,8 @@ flowchart TD
 
 Network data is read in bounded buffers and written to disk incrementally.
 HyperDL does not place a complete file or segment in a `MemoryStream`. The
-buffer size is 64 KiB in Low RAM mode and 80 KiB otherwise. Actual process
+buffer size follows the selected buffer mode (`Auto`, `LowRam`, `Balanced`, or
+`Fast`) and stays inside a global 64 MiB network-buffer budget. Actual process
 memory also depends on the runtime, UI, SQLite, and active workers, so these
 buffer sizes are not a total-memory guarantee.
 
@@ -80,8 +82,8 @@ path.
 ## Current boundaries
 
 - Supported network schemes: HTTP and HTTPS direct-file URLs.
-- Not implemented: FTP/FTPS, BitTorrent, dynamic segmentation, automatic
-  updates, and DRM or access-control bypass.
+- Not implemented: FTP/FTPS, BitTorrent, automatic updates, and DRM or
+  access-control bypass.
 - Downloads and settings belong to the user; normal application uninstall
   does not remove download folders or `%LOCALAPPDATA%\HyperDL`.
 

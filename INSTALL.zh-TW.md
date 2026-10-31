@@ -6,6 +6,7 @@
 
 1. 從官方 GitHub Release 的附件中下載 `HyperDL_Setup.exe`。
 2. 請務必只從官方 GitHub Release 頁面下載。
+3. 選用：從同一個 Release 下載 `HyperDL_<版本>_win-x64_portable.zip`，可取得免安裝的便攜版本。
 
 ## 安裝
 
@@ -24,5 +25,5 @@
 
 - 僅支援 Windows x64。
 - 安裝程式尚未簽署，首次執行時 Windows SmartScreen 可能會顯示警告。
-- 若 Release 說明中有提供 SHA-256 檢查碼，建議安裝前先進行比對。
+- 每個 Release 附有 `SHA256SUMS.txt`，收錄安裝程式與 Portable ZIP 的檢查碼；執行安裝程式前建議先比對。
 - HyperDL 採用每個使用者安裝，預設不需要系統管理員權限。

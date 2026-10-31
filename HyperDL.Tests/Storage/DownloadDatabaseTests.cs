@@ -60,7 +60,9 @@ public class DownloadDatabaseTests
         var recovered = Assert.Single(await database.LoadSessionsAsync());
 
         Assert.Equal(DownloadSessionStatus.Failed, recovered.Status);
-        Assert.Equal("資料庫記錄存在，但暫存檔不存在。", recovered.RecoveryError);
+        Assert.Equal(
+            "The database record exists, but the partial file is missing.",
+            recovered.RecoveryError);
     }
 
     [Fact]

@@ -304,7 +304,6 @@ public sealed class DownloadJob : INotifyPropertyChanged
 
     internal CancellationTokenSource? Cancellation { get; set; }
     internal Task? RunTask { get; set; }
-    internal bool NeedsSourceCheck { get; set; }
     internal bool PauseRequested { get; set; }
     internal bool CancelRequested { get; set; }
 

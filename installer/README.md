@@ -10,6 +10,10 @@ The installer does not define an uninstall-delete section. Normal removal
 keeps user downloads, `.part` files outside the installation directory, and
 `%LOCALAPPDATA%\HyperDL` settings and download history.
 
+The installer also registers the `hyperdl://` protocol under
+`HKCU\Software\Classes\hyperdl` so the Chrome extension can hand links to the
+app.
+
 ## Requirements
 
 - Windows x64.

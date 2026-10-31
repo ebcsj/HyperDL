@@ -444,8 +444,8 @@ public sealed class DownloadDatabase
                 {
                     session.Status = DownloadSessionStatus.Failed;
                     session.RecoveryError = File.Exists(session.PartPath)
-                        ? "暫存檔大小不符，無法安全恢復。"
-                        : "資料庫記錄存在，但暫存檔不存在。";
+                        ? "The partial file size does not match the recorded total size."
+                        : "The database record exists, but the partial file is missing.";
                 }
 
                 break;
@@ -460,8 +460,8 @@ public sealed class DownloadDatabase
                 {
                     session.Status = DownloadSessionStatus.Failed;
                     session.RecoveryError = File.Exists(session.PartPath)
-                        ? "暫存檔大小不符，無法安全恢復。"
-                        : "資料庫記錄存在，但暫存檔不存在。";
+                        ? "The partial file size does not match the recorded total size."
+                        : "The database record exists, but the partial file is missing.";
                 }
 
                 break;
@@ -471,7 +471,8 @@ public sealed class DownloadDatabase
                     new FileInfo(session.FinalPath).Length != record.TotalSize)
                 {
                     session.Status = DownloadSessionStatus.Failed;
-                    session.RecoveryError = "已完成檔案不存在或大小不符。";
+                    session.RecoveryError =
+                        "The completed file is missing or its size does not match the record.";
                 }
 
                 break;
@@ -481,7 +482,8 @@ public sealed class DownloadDatabase
                     !File.Exists(session.FinalPath))
                 {
                     session.Status = DownloadSessionStatus.Failed;
-                    session.RecoveryError = "下載尚未開始，且找不到暫存檔。";
+                    session.RecoveryError =
+                        "The download had not started and no partial file was found.";
                 }
 
                 break;

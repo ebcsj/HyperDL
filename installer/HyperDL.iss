@@ -1,5 +1,5 @@
 #define AppName "HyperDL"
-#define AppVersion "1.1.0.0"
+#define AppVersion "1.1.1.0"
 #define AppPublisher "Kerby Chow"
 
 [Setup]
@@ -31,7 +31,9 @@ Root: HKCU; Subkey: "Software\Classes\hyperdl\DefaultIcon"; ValueType: string; V
 Root: HKCU; Subkey: "Software\Classes\hyperdl\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\HyperDL.exe"" ""%1"""
 
 [Files]
-Source: "..\artifacts\publish\HyperDL\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Debug symbols (.pdb) embed local build paths and are not needed at runtime,
+; so they are never shipped in the installer or the portable package.
+Source: "..\artifacts\publish\HyperDL\*"; DestDir: "{app}"; Excludes: "*.pdb"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\HyperDL"; Filename: "{app}\HyperDL.exe"; WorkingDir: "{app}"

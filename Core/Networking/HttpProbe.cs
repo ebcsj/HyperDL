@@ -169,7 +169,7 @@ public sealed class HttpProbe
         }
 
         var candidateFileName = string.IsNullOrWhiteSpace(headerFileName)
-            ? GetFileNameFromUri(finalUri)
+            ? FileNameSanitizer.GetFileNameFromUri(finalUri)
             : Uri.UnescapeDataString(headerFileName.Trim().Trim('"'));
 
         return new DownloadMetadata(
@@ -195,15 +195,6 @@ public sealed class HttpProbe
         return response.IsSuccessStatusCode
             ? response.Content.Headers.ContentLength
             : null;
-    }
-
-    private static string GetFileNameFromUri(Uri uri)
-    {
-        var lastSegment = uri.Segments.Length > 0
-            ? Uri.UnescapeDataString(uri.Segments[^1]).Trim('/')
-            : string.Empty;
-
-        return string.IsNullOrWhiteSpace(lastSegment) ? "download" : lastSegment;
     }
 
 }

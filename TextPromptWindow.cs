@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using HyperDL.Localization;
 
 namespace HyperDL;
 
@@ -60,7 +61,7 @@ public sealed class TextPromptWindow : Window
         };
         var cancel = new Button
         {
-            Content = "Cancel",
+            Content = LocalizationManager.GetString("CancelButton"),
             Width = 92,
             Height = 34,
             Margin = new Thickness(0, 0, 8, 0),
@@ -68,7 +69,7 @@ public sealed class TextPromptWindow : Window
         };
         var ok = new Button
         {
-            Content = "OK",
+            Content = LocalizationManager.GetString("OkButton"),
             Width = 92,
             Height = 34,
             IsDefault = true

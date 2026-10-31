@@ -143,6 +143,10 @@ jobs:
               throw "Installer was not found at $installer."
           }
 
+          # Debug symbols embed local build paths; never ship them.
+          Get-ChildItem -LiteralPath $publishDir -Filter '*.pdb' -Recurse -File -ErrorAction SilentlyContinue |
+              Remove-Item -Force
+
           New-Item -ItemType Directory -Path $assetsDir -Force | Out-Null
 
           $installerName = "HyperDL_${version}_Setup.exe"

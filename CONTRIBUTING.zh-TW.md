@@ -17,6 +17,8 @@
 & "C:\Program Files\dotnet\dotnet.exe" test HyperDL.sln -c Release --no-build
 ```
 
+若變更擴充功能，請執行 `scripts/build-extension.ps1` 進行驗證與封裝。
+
 ## Pull Request
 
 1. Fork Repository。

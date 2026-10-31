@@ -494,8 +494,9 @@ public sealed class DownloadManager : IAsyncDisposable
         new(
             uri,
             null,
-            FileNameSanitizer.Sanitize(
-                string.IsNullOrWhiteSpace(fileName) ? GetFileName(uri) : fileName),
+            string.IsNullOrWhiteSpace(fileName)
+                ? FileNameSanitizer.GetFileNameFromUri(uri)
+                : FileNameSanitizer.Sanitize(fileName),
             null,
             null,
             null,
@@ -872,14 +873,6 @@ public sealed class DownloadManager : IAsyncDisposable
                 yield return value;
             }
         }
-    }
-
-    private static string GetFileName(Uri uri)
-    {
-        var lastSegment = uri.Segments.Length > 0
-            ? Uri.UnescapeDataString(uri.Segments[^1]).Trim('/')
-            : string.Empty;
-        return string.IsNullOrWhiteSpace(lastSegment) ? "download" : lastSegment;
     }
 
     private sealed class CallbackProgress<T>(Action<T> callback) : IProgress<T>

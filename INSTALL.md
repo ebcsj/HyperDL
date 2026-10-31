@@ -6,6 +6,7 @@ This guide explains how to download and install the HyperDL Windows x64 installe
 
 1. Download `HyperDL_Setup.exe` from the official GitHub Release assets.
 2. Make sure you download it only from the official GitHub Release page.
+3. Optional: download `HyperDL_<version>_win-x64_portable.zip` from the same release for a portable, no-install copy.
 
 ## Install
 
@@ -24,5 +25,5 @@ This guide explains how to download and install the HyperDL Windows x64 installe
 
 - HyperDL is Windows x64 only.
 - The installer is not code-signed. Windows SmartScreen may display a warning on first run.
-- If a SHA-256 checksum is provided in the release notes, verify it before running the installer.
+- Each release includes `SHA256SUMS.txt` with checksums for the installer and the portable ZIP; verify before running the installer.
 - HyperDL uses a per-user installation and does not require administrator privileges by default.

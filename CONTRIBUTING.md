@@ -18,6 +18,9 @@ From the repository root:
 & "C:\Program Files\dotnet\dotnet.exe" test HyperDL.sln -c Release --no-build
 ```
 
+For extension changes, run `scripts/build-extension.ps1` to validate and
+package the Chrome extension.
+
 ## Pull requests
 
 1. Fork the repository.

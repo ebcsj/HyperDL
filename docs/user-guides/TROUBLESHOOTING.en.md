@@ -27,7 +27,7 @@
 
 ## Pause or resume is unavailable
 
-Pause/Continue is supported only for segmented downloads with confirmed range
+Pause/Resume is supported only for segmented downloads with confirmed range
 support and a known file size. The single-connection fallback cannot resume.
 If the server rejects Range, the length is unknown, or probing is inconclusive,
 allow the download to finish or cancel and start it again.
@@ -40,13 +40,13 @@ versions.
 ## The file or `.part` temporary file is missing
 
 - Check the configured download folder, or select a job and use
-  `開啟下載資料夾` (Open Download Folder).
+  `Open folder`.
 - If a file with the same name already exists, the completed file may use a
   numbered name.
-- `.part` is an incomplete temporary file. Cancelling removes that job's
-  incomplete content. When deleting a recoverable record, the UI asks whether
-  to remove its `.part` file too. Do not rename or move a temporary file while
-  it is in use.
+- `.part` is an incomplete temporary file. Cancelling keeps it so a segmented
+  job can be resumed later. Removing a job from the list keeps the file;
+  `Delete file and remove` deletes it together with the job. Do not rename or
+  move a temporary file while it is in use.
 - Single-connection downloads do not save a resumable session. If the
   application exits unexpectedly, that incomplete content cannot be resumed
   from the recovery list.

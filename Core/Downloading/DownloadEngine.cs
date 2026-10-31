@@ -238,7 +238,9 @@ public sealed class DownloadEngine
         Directory.CreateDirectory(_downloadDirectory);
 
         var fileName = FileNameSanitizer.Sanitize(
-            string.IsNullOrWhiteSpace(suggestedFileName) ? GetFileName(uri) : suggestedFileName);
+            string.IsNullOrWhiteSpace(suggestedFileName)
+                ? FileNameSanitizer.GetFileNameFromUri(uri)
+                : suggestedFileName);
         var outputPath = GetAvailableFilePath(_downloadDirectory, fileName);
         var partPath = outputPath + ".part";
         var mode = bufferMode ?? _options.BufferMode;
@@ -1000,15 +1002,6 @@ public sealed class DownloadEngine
         {
             Timeout = Timeout.InfiniteTimeSpan
         };
-    }
-
-    private static string GetFileName(Uri uri)
-    {
-        var lastSegment = uri.Segments.Length > 0
-            ? Uri.UnescapeDataString(uri.Segments[^1]).Trim('/')
-            : string.Empty;
-
-        return FileNameSanitizer.Sanitize(lastSegment);
     }
 
     private static string GetAvailableFilePath(string folder, string fileName)

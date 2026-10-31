@@ -4,8 +4,8 @@ Use this checklist for every public HyperDL release. Release tags must look like
 
 ## 1. Version bump
 
-- [ ] Update the version in `HyperDL.csproj` (`<Version>`/`<FileVersion>`, if present).
-- [ ] Update `#define AppVersion` in `installer/HyperDL.iss` (currently `1.0.0.0`).
+- [ ] Update `<Version>` in `HyperDL.csproj` (currently `1.1.1`).
+- [ ] Update `#define AppVersion` in `installer/HyperDL.iss` (currently `1.1.1.0`).
 - [ ] Update the extension version in its manifest under `extension/`.
 - [ ] Grep the docs for old version strings and update them.
 - [ ] Confirm the release tag matches the version (`vX.Y.Z`).
@@ -34,7 +34,7 @@ Use this checklist for every public HyperDL release. Release tags must look like
 
 ## 5. Checksums
 
-- [ ] Generate SHA-256 hashes for the installer and portable zip.
+- [ ] Confirm the Release workflow generated `SHA256SUMS.txt` for the installer and portable zip.
 - [ ] Confirm `SHA256SUMS.txt` lists both assets with the exact release file names.
 - [ ] Re-verify the downloaded assets after publishing.
 

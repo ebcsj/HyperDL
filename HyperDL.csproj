@@ -5,6 +5,10 @@
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <Version>1.1.1</Version>
+    <!-- Map absolute build paths to /src so shipped binaries never embed the
+         developer's local user profile path (PE debug directory and PDBs). -->
+    <PathMap>$(MSBuildProjectDirectory)=/src</PathMap>
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="HyperDL.Tests/**/*.cs" />

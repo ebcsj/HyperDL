@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "HyperDL Download Bridge",
   "short_name": "HyperDL",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "description": "Send direct HTTP/HTTPS download links to the HyperDL desktop download manager.",
   "permissions": [
     "activeTab",

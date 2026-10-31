@@ -9,6 +9,8 @@ HyperDL documentation is available in Traditional Chinese and English:
 | Architecture | [架構說明](ARCHITECTURE.zh-TW.md) | [Architecture](ARCHITECTURE.md) |
 | Project structure | [專案結構](PROJECT_STRUCTURE.zh-TW.md) | [Project structure](PROJECT_STRUCTURE.md) |
 | Installation checks | [安裝與解除安裝測試](testing/INSTALL_UNINSTALL_TEST_CHECKLIST.zh-TW.md) | [Installation and uninstall checks](testing/INSTALL_UNINSTALL_TEST_CHECKLIST.md) |
+| Installation guide | [安裝指南](../INSTALL.zh-TW.md) | [Installation guide](../INSTALL.md) |
+| Chrome extension | [Chrome 擴充功能](../CHROME_EXTENSION.zh-TW.md) | [Chrome extension](../CHROME_EXTENSION.md) |
 
 Security and protocol notes:
 
