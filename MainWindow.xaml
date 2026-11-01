@@ -10,7 +10,7 @@
         MinWidth="900"
         MinHeight="620"
         WindowStartupLocation="CenterScreen"
-        Background="#F4F6FB"
+        Background="{DynamicResource WindowBackground}"
         FontFamily="Segoe UI"
         FontSize="13"
         UseLayoutRounding="True"
@@ -25,37 +25,32 @@
     </Window.TaskbarItemInfo>
 
     <Window.Resources>
-        <SolidColorBrush x:Key="AccentBrush" Color="#2563EB" />
-        <SolidColorBrush x:Key="AccentDarkBrush" Color="#1D4ED8" />
-        <SolidColorBrush x:Key="TextBrush" Color="#0F172A" />
-        <SolidColorBrush x:Key="MutedBrush" Color="#64748B" />
-        <SolidColorBrush x:Key="SubtleBrush" Color="#94A3B8" />
-        <SolidColorBrush x:Key="BorderBrushSoft" Color="#E2E8F0" />
-        <SolidColorBrush x:Key="SuccessBrush" Color="#15803D" />
-        <SolidColorBrush x:Key="DangerBrush" Color="#DC2626" />
+        <!-- Theme brushes live in Themes/Light.xaml and Themes/Dark.xaml and
+             are referenced with DynamicResource so a runtime theme swap
+             repaints every surface. -->
         <app:SegmentPercentConverter x:Key="SegmentPercent" />
         <app:NullToCollapsedConverter x:Key="NullToCollapsed" />
 
         <Style x:Key="SurfaceCard" TargetType="Border">
-            <Setter Property="Background" Value="White" />
+            <Setter Property="Background" Value="{DynamicResource CardBackground}" />
             <Setter Property="CornerRadius" Value="12" />
-            <Setter Property="BorderBrush" Value="#E7ECF3" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorder}" />
             <Setter Property="BorderThickness" Value="1" />
         </Style>
 
         <Style x:Key="HeaderTitle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="24" />
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         </Style>
 
         <Style x:Key="MutedText" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextMuted}" />
             <Setter Property="FontSize" Value="12" />
         </Style>
 
         <Style x:Key="FieldLabel" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#475569" />
+            <Setter Property="Foreground" Value="{DynamicResource FieldLabelText}" />
             <Setter Property="FontSize" Value="12" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Margin" Value="0,0,0,5" />
@@ -64,9 +59,9 @@
         <Style x:Key="ToolButton" TargetType="Button">
             <Setter Property="Padding" Value="13,7" />
             <Setter Property="Margin" Value="0,0,7,0" />
-            <Setter Property="Background" Value="White" />
-            <Setter Property="Foreground" Value="#1E293B" />
-            <Setter Property="BorderBrush" Value="#D9E2EC" />
+            <Setter Property="Background" Value="{DynamicResource ButtonBackground}" />
+            <Setter Property="Foreground" Value="{DynamicResource ButtonForeground}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource InputBorder}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Cursor" Value="Hand" />
@@ -84,10 +79,10 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="#F1F5F9" />
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource ButtonHover}" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="#E2E8F0" />
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource ButtonPressed}" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="Root" Property="Opacity" Value="0.45" />
@@ -99,9 +94,9 @@
         </Style>
 
         <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource ToolButton}">
-            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Background" Value="{DynamicResource Accent}" />
             <Setter Property="Foreground" Value="White" />
-            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
             <Setter Property="Padding" Value="18,8" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -117,7 +112,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="{StaticResource AccentDarkBrush}" />
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource AccentDark}" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="Root" Property="Opacity" Value="0.85" />
@@ -132,8 +127,9 @@
         </Style>
 
         <Style x:Key="InputBox" TargetType="TextBox">
-            <Setter Property="Background" Value="White" />
-            <Setter Property="BorderBrush" Value="#D9E2EC" />
+            <Setter Property="Background" Value="{DynamicResource InputBackground}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource InputBorder}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Padding" Value="10,8" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -155,8 +151,8 @@
 
         <Style x:Key="SlimProgress" TargetType="ProgressBar">
             <Setter Property="Height" Value="8" />
-            <Setter Property="Background" Value="#E7ECF3" />
-            <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Background" Value="{DynamicResource CardBorder}" />
+            <Setter Property="Foreground" Value="{DynamicResource Accent}" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -177,7 +173,7 @@
 
         <Style x:Key="GridHeader" TargetType="DataGridColumnHeader">
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextMuted}" />
             <Setter Property="FontSize" Value="11" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Padding" Value="10,10" />
@@ -189,20 +185,20 @@
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="Margin" Value="10,0" />
             <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-            <Setter Property="Foreground" Value="#1E293B" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         </Style>
 
         <Style x:Key="StatusCell" TargetType="TextBlock" BasedOn="{StaticResource CellText}">
             <Setter Property="FontWeight" Value="SemiBold" />
             <Style.Triggers>
                 <DataTrigger Binding="{Binding Status}" Value="Downloading">
-                    <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource Accent}" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding Status}" Value="Completed">
-                    <Setter Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource Success}" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding Status}" Value="Failed">
-                    <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource Danger}" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding Status}" Value="Recoverable">
                     <Setter Property="Foreground" Value="#B45309" />
@@ -211,7 +207,7 @@
         </Style>
 
         <Style x:Key="ErrorText" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource Danger}" />
             <Setter Property="FontSize" Value="12" />
             <Setter Property="TextWrapping" Value="Wrap" />
             <Style.Triggers>
@@ -252,7 +248,7 @@
             <Border Width="46"
                     Height="46"
                     CornerRadius="12"
-                    Background="{StaticResource AccentBrush}"
+                    Background="{DynamicResource Accent}"
                     VerticalAlignment="Center">
                 <TextBlock Text="H"
                            Foreground="White"
@@ -293,14 +289,14 @@
                 </Grid.ColumnDefinitions>
                 <Grid Margin="2,0,12,0">
                     <TextBlock Text="{loc:Loc AddUrlWatermark}"
-                               Foreground="{StaticResource SubtleBrush}"
+                               Foreground="{DynamicResource TextSubtle}"
                                VerticalAlignment="Center"
                                Margin="12,0"
                                IsHitTestVisible="False">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
                                 <Setter Property="Visibility" Value="Collapsed" />
-                                <Setter Property="Foreground" Value="{StaticResource SubtleBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextSubtle}" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding Text, ElementName=UrlTextBox}" Value="">
                                         <Setter Property="Visibility" Value="Visible" />
@@ -378,15 +374,19 @@
                               RowHeaderWidth="0"
                               BorderThickness="0"
                               Background="Transparent"
-                              RowBackground="White"
-                              AlternatingRowBackground="#F8FAFC"
+                              RowBackground="{DynamicResource CardBackground}"
+                              AlternatingRowBackground="{DynamicResource RowAlternate}"
                               AlternationCount="2"
                               GridLinesVisibility="Horizontal"
-                              HorizontalGridLinesBrush="#EEF2F7"
+                              HorizontalGridLinesBrush="{DynamicResource GridLine}"
                               VerticalGridLinesBrush="Transparent"
                               ColumnHeaderStyle="{StaticResource GridHeader}"
                               RowHeight="44"
                               EnableRowVirtualization="True"
+                              AllowDrop="True"
+                              PreviewMouseLeftButtonDown="JobsGrid_PreviewMouseLeftButtonDown"
+                              MouseMove="JobsGrid_MouseMove"
+                              Drop="JobsGrid_Drop"
                               SelectionChanged="JobsGrid_SelectionChanged"
                               MouseDoubleClick="JobsGrid_MouseDoubleClick"
                               PreviewMouseRightButtonDown="JobsGrid_PreviewMouseRightButtonDown">
@@ -436,7 +436,7 @@
                                             <TextBlock Grid.Column="1"
                                                        Text="{Binding ProgressText}"
                                                        FontSize="12"
-                                                       Foreground="#475569"
+                                                       Foreground="{DynamicResource FieldLabelText}"
                                                        MinWidth="42"
                                                        TextAlignment="Right"
                                                        VerticalAlignment="Center" />
@@ -475,7 +475,7 @@
                         </DataGrid.Columns>
                     </DataGrid>
                     <TextBlock Text="{loc:Loc NoDownloadsYet}"
-                               Foreground="{StaticResource SubtleBrush}"
+                               Foreground="{DynamicResource TextSubtle}"
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center"
                                Margin="0,34,0,0"
@@ -483,7 +483,7 @@
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
                                 <Setter Property="Visibility" Value="Collapsed" />
-                                <Setter Property="Foreground" Value="{StaticResource SubtleBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextSubtle}" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding Items.Count, ElementName=JobsGrid}" Value="0">
                                         <Setter Property="Visibility" Value="Visible" />
@@ -520,7 +520,7 @@
                                    Grid.ColumnSpan="3"
                                    Text="{loc:Loc DetailsTitle}"
                                    FontWeight="SemiBold"
-                                   Foreground="#1E293B"
+                                   Foreground="{DynamicResource TextPrimary}"
                                    Margin="0,0,0,6" />
 
                         <TextBlock Grid.Row="1" Text="{loc:Loc SourceLabel}" Style="{StaticResource FieldLabel}" Margin="0,0,8,4" />
@@ -528,7 +528,7 @@
                                    Grid.Column="1"
                                    Grid.ColumnSpan="2"
                                    Text="{Binding SourceUri}"
-                                   Foreground="#334155"
+                                   Foreground="{DynamicResource DetailText}"
                                    FontSize="12"
                                    TextTrimming="CharacterEllipsis"
                                    Margin="0,0,0,4" />
@@ -538,7 +538,7 @@
                                    Grid.Column="1"
                                    Grid.ColumnSpan="2"
                                    Text="{Binding TargetPath}"
-                                   Foreground="#334155"
+                                   Foreground="{DynamicResource DetailText}"
                                    FontSize="12"
                                    TextTrimming="CharacterEllipsis"
                                    Margin="0,0,0,4" />
@@ -547,22 +547,22 @@
                                     Grid.ColumnSpan="3"
                                     Orientation="Horizontal"
                                     Margin="0,2,0,4">
-                            <TextBlock Foreground="#64748B" FontSize="12">
+                            <TextBlock Foreground="{DynamicResource TextMuted}" FontSize="12">
                                 <Run Text="{loc:Loc ConnectionsDetailLabel}" FontWeight="SemiBold" />
                                 <Run Text=": " />
                                 <Run Text="{Binding ConnectionCount}" />
                             </TextBlock>
-                            <TextBlock Foreground="#64748B" FontSize="12" Margin="18,0,0,0">
+                            <TextBlock Foreground="{DynamicResource TextMuted}" FontSize="12" Margin="18,0,0,0">
                                 <Run Text="{loc:Loc SegmentsLabel}" FontWeight="SemiBold" />
                                 <Run Text=": " />
                                 <Run Text="{Binding SegmentCount}" />
                             </TextBlock>
-                            <TextBlock Foreground="#64748B" FontSize="12" Margin="18,0,0,0">
+                            <TextBlock Foreground="{DynamicResource TextMuted}" FontSize="12" Margin="18,0,0,0">
                                 <Run Text="{loc:Loc ColumnBuffer}" FontWeight="SemiBold" />
                                 <Run Text=": " />
                                 <Run Text="{Binding BufferModeText}" />
                             </TextBlock>
-                            <TextBlock Foreground="#64748B" FontSize="12"
+                            <TextBlock Foreground="{DynamicResource TextMuted}" FontSize="12"
                                        Margin="18,0,0,0"
                                        Text="{Binding SegmentsSummary}" />
                         </StackPanel>
@@ -603,13 +603,13 @@
                     </Grid>
 
                     <TextBlock Text="{loc:Loc DetailsEmpty}"
-                               Foreground="{StaticResource SubtleBrush}"
+                               Foreground="{DynamicResource TextSubtle}"
                                FontSize="12"
                                VerticalAlignment="Center">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
                                 <Setter Property="Visibility" Value="Collapsed" />
-                                <Setter Property="Foreground" Value="{StaticResource SubtleBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextSubtle}" />
                                 <Setter Property="FontSize" Value="12" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding}" Value="{x:Null}">
@@ -638,25 +638,25 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="StatusMessageTextBlock"
                            Text="{loc:Loc ReadyStatus}"
-                           Foreground="{StaticResource MutedBrush}"
+                           Foreground="{DynamicResource TextMuted}"
                            FontSize="12"
                            VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis" />
                 <TextBlock x:Name="ActiveSummaryTextBlock"
                            Grid.Column="1"
-                           Foreground="{StaticResource MutedBrush}"
+                           Foreground="{DynamicResource TextMuted}"
                            FontSize="12"
                            Margin="16,0,0,0"
                            VerticalAlignment="Center" />
                 <TextBlock x:Name="SpeedSummaryTextBlock"
                            Grid.Column="2"
-                           Foreground="{StaticResource MutedBrush}"
+                           Foreground="{DynamicResource TextMuted}"
                            FontSize="12"
                            Margin="16,0,0,0"
                            VerticalAlignment="Center" />
                 <TextBlock x:Name="ConnectionSummaryTextBlock"
                            Grid.Column="3"
-                           Foreground="{StaticResource MutedBrush}"
+                           Foreground="{DynamicResource TextMuted}"
                            FontSize="12"
                            Margin="16,0,0,0"
                            VerticalAlignment="Center" />
@@ -671,7 +671,7 @@
               Margin="-22">
             <Border Width="620"
                     MaxHeight="700"
-                    Background="White"
+                    Background="{DynamicResource CardBackground}"
                     CornerRadius="14"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
@@ -686,7 +686,7 @@
                         <TextBlock Text="{loc:Loc SettingsTitle}"
                                    FontSize="20"
                                    FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextBrush}"
+                                   Foreground="{DynamicResource TextPrimary}"
                                    VerticalAlignment="Center" />
                         <Button Content="{loc:Loc CloseSettingsButton}"
                                 Style="{StaticResource ToolButton}"
@@ -789,12 +789,41 @@
                             <CheckBox x:Name="CheckForUpdatesCheckBox"
                                       Content="{loc:Loc CheckForUpdatesLabel}"
                                       Margin="0,0,0,8" />
+                            <CheckBox x:Name="AutoUpdateCheckBox"
+                                      Content="{loc:Loc AutoUpdateLabel}"
+                                      Margin="0,0,0,8" />
                             <CheckBox x:Name="Http2CheckBox"
                                       Content="{loc:Loc Http2Label}"
-                                      Margin="0,0,0,14" />
+                                      Margin="0,0,0,8" />
+                            <CheckBox x:Name="DarkModeCheckBox"
+                                      Content="{loc:Loc DarkModeLabel}"
+                                      Margin="0,0,0,8" />
+                            <CheckBox x:Name="NativeMessagingCheckBox"
+                                      Content="{loc:Loc NativeMessagingLabel}"
+                                      Margin="0,0,0,2" />
+                            <Grid Margin="24,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="ExtensionIdTextBox" Style="{StaticResource InputBox}" />
+                                <TextBlock Grid.Column="1"
+                                           Text="{loc:Loc ExtensionIdLabel}"
+                                           Style="{StaticResource MutedText}"
+                                           VerticalAlignment="Center"
+                                           Margin="8,0,0,0" />
+                            </Grid>
+                            <WrapPanel Margin="0,0,0,14">
+                                <Button Content="{loc:Loc ExportSettingsButton}"
+                                        Style="{StaticResource ToolButton}"
+                                        Click="ExportSettings_Click" />
+                                <Button Content="{loc:Loc ImportSettingsButton}"
+                                        Style="{StaticResource ToolButton}"
+                                        Click="ImportSettings_Click" />
+                            </WrapPanel>
 
-                            <Border Background="#F8FAFC"
-                                    BorderBrush="#E7ECF3"
+                            <Border Background="{DynamicResource RowAlternate}"
+                                    BorderBrush="{DynamicResource CardBorder}"
                                     BorderThickness="1"
                                     CornerRadius="10"
                                     Padding="12"

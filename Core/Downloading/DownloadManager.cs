@@ -196,6 +196,32 @@ public sealed class DownloadManager : IAsyncDisposable
     }
 
     /// <summary>
+    /// Moves a job within the visible queue order. Must be called on the UI
+    /// thread; the list order also drives resume-all dispatch order.
+    /// </summary>
+    public void MoveJob(DownloadJob job, int index)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+        lock (_jobsGate)
+        {
+            var old = _jobs.IndexOf(job);
+            if (old < 0 || _jobs.Count == 0)
+            {
+                return;
+            }
+
+            index = Math.Clamp(index, 0, _jobs.Count - 1);
+            if (old == index)
+            {
+                return;
+            }
+
+            _jobs.RemoveAt(old);
+            _jobs.Insert(index, job);
+        }
+    }
+
+    /// <summary>
     /// Sets or clears a future start time for a queued (not yet probed) job.
     /// Running or finished jobs ignore schedules.
     /// </summary>

@@ -34,6 +34,7 @@ public partial class MainWindow : Window
     private bool _allowClose;
     private bool _reallyExit;
     private bool _shutdownPrompted;
+    private string? _pendingInstallerPath;
     private string? _lastClipboardUrl;
     private System.Windows.Forms.NotifyIcon? _trayIcon;
     private DispatcherTimer? _clipboardTimer;
@@ -400,14 +401,142 @@ public partial class MainWindow : Window
             var current = Assembly.GetEntryAssembly()
                 ?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
                 ?.InformationalVersion;
-            if (UpdateCheck.IsNewerVersion(current, info.Tag))
+            if (!UpdateCheck.IsNewerVersion(current, info.Tag))
+            {
+                return;
+            }
+
+            if (!_settings.AutoUpdateDownload || info.InstallerUrl is null || info.SumsUrl is null)
             {
                 SetStatus(string.Format(L("UpdateAvailableFormat"), info.Tag, info.Url));
+                return;
             }
+
+            // Auto-update: download into a temp folder, verify against the
+            // release checksums, then ask before running the installer.
+            var progress = new Progress<double>(value =>
+                SetStatus($"HyperDL {info.Tag} — {value:0}%"));
+            var downloaded = await UpdateInstaller.DownloadAndVerifyAsync(
+                info,
+                Path.Combine(Path.GetTempPath(), "HyperDL-update"),
+                progress).ConfigureAwait(true);
+            if (downloaded is null || !downloaded.Verified)
+            {
+                SetStatus(L("UpdateDownloadFailed"));
+                return;
+            }
+
+            SetStatus(string.Format(L("UpdateVerifiedFormat"), info.Tag));
+            var answer = MessageBox.Show(
+                this,
+                string.Format(L("UpdateReadyMessage"), info.Tag),
+                L("UpdateReadyTitle"),
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+            if (answer != MessageBoxResult.Yes)
+            {
+                _pendingInstallerPath = downloaded.InstallerPath;
+                SetStatus(string.Format(L("UpdateVerifiedFormat"), info.Tag));
+                return;
+            }
+
+            _pendingInstallerPath = downloaded.InstallerPath;
+            _reallyExit = true;
+            Close();
         }
         catch
         {
             // Update checks are best effort and never disturb startup.
+        }
+    }
+
+    /// <summary>
+    /// Executes a CLI/pipe command on the UI thread and returns its JSON
+    /// response payload.
+    /// </summary>
+    public IpcResponse ExecuteIpcCommand(IpcRequest request)
+    {
+        switch (request.Command)
+        {
+            case "list":
+            {
+                var jobs = _manager.Jobs.Select(job => new IpcJobSnapshot(
+                    job.Id,
+                    job.FileName,
+                    job.StatusText,
+                    job.Percentage ?? 0,
+                    job.BytesDownloaded,
+                    job.TotalBytes,
+                    job.TargetPath,
+                    job.ActualSha256)).ToArray();
+                return new IpcResponse(true, null, jobs, null);
+            }
+
+            case "pause-all":
+                _manager.PauseAll();
+                UpdateCommandStates();
+                return new IpcResponse(true, null, null, null);
+
+            case "resume-all":
+                _manager.ResumeAll();
+                UpdateCommandStates();
+                return new IpcResponse(true, null, null, null);
+
+            case "clear-completed":
+            {
+                var completed = _manager.Jobs.Where(job => job.IsCompleted).ToArray();
+                foreach (var job in completed)
+                {
+                    _ = RemoveCompletedQuietlyAsync(job);
+                }
+
+                return new IpcResponse(true, null, null, completed.Length);
+            }
+
+            case "add":
+            {
+                var uris = request.Urls
+                    .Select(text => Uri.TryCreate(text, UriKind.Absolute, out var uri) &&
+                                    DownloadUrlValidator.IsSupported(uri)
+                        ? uri
+                        : null)
+                    .Where(uri => uri is not null)
+                    .Cast<Uri>()
+                    .DistinctBy(uri => uri.GetComponents(UriComponents.HttpRequestUrl, UriFormat.UriEscaped))
+                    .ToArray();
+                var added = 0;
+                foreach (var uri in uris)
+                {
+                    if (_manager.AddUrl(uri, request.Connections))
+                    {
+                        added++;
+                    }
+                }
+
+                if (added > 0)
+                {
+                    _shutdownPrompted = false;
+                    UpdateCommandStates();
+                }
+
+                return new IpcResponse(true, null, null, added);
+            }
+
+            default:
+                return new IpcResponse(false, $"Unknown command '{request.Command}'.", null, null);
+        }
+    }
+
+    private async Task RemoveCompletedQuietlyAsync(DownloadJob job)
+    {
+        try
+        {
+            await _manager.RemoveAsync(job).ConfigureAwait(true);
+            await Dispatcher.InvokeAsync(UpdateCommandStates);
+        }
+        catch
+        {
+            // Removal is best effort from the CLI path.
         }
     }
 
@@ -1061,6 +1190,65 @@ public partial class MainWindow : Window
     private void JobsGrid_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
         UpdateCommandStates();
 
+    private Point? _dragStartPoint;
+    private DownloadJob? _dragJob;
+    private const string DragFormat = "HyperDL-JobMove";
+
+    private void JobsGrid_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is DependencyObject source &&
+            ItemsControl.ContainerFromElement(JobsGrid, source) is DataGridRow row &&
+            row.Item is DownloadJob job)
+        {
+            _dragStartPoint = e.GetPosition(null);
+            _dragJob = job;
+        }
+        else
+        {
+            _dragStartPoint = null;
+            _dragJob = null;
+        }
+    }
+
+    private void JobsGrid_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (_dragJob is null || _dragStartPoint is null || e.LeftButton != MouseButtonState.Pressed)
+        {
+            return;
+        }
+
+        var delta = e.GetPosition(null) - _dragStartPoint.Value;
+        if (Math.Abs(delta.X) > 4 || Math.Abs(delta.Y) > 4)
+        {
+            var data = new DataObject(DragFormat, _dragJob);
+            try
+            {
+                DragDrop.DoDragDrop(JobsGrid, data, DragDropEffects.Move);
+            }
+            finally
+            {
+                _dragStartPoint = null;
+                _dragJob = null;
+            }
+        }
+    }
+
+    private void JobsGrid_Drop(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetData(DragFormat) is not DownloadJob job ||
+            e.OriginalSource is not DependencyObject source ||
+            ItemsControl.ContainerFromElement(JobsGrid, source) is not DataGridRow targetRow ||
+            targetRow.Item is not DownloadJob target)
+        {
+            return;
+        }
+
+        var targetIndex = _manager.Jobs.IndexOf(target);
+        _manager.MoveJob(job, targetIndex);
+        JobsGrid.SelectedItem = job;
+        e.Handled = true;
+    }
+
     private void Timer_Tick(object? sender, EventArgs e)
     {
         var jobs = _manager.Jobs;
@@ -1224,7 +1412,11 @@ public partial class MainWindow : Window
         ClipboardMonitoringCheckBox.IsChecked = _settings.ClipboardMonitoring;
         ShutdownWhenCompleteCheckBox.IsChecked = _settings.ShutdownWhenComplete;
         CheckForUpdatesCheckBox.IsChecked = _settings.CheckForUpdates;
+        AutoUpdateCheckBox.IsChecked = _settings.AutoUpdateDownload;
         Http2CheckBox.IsChecked = _settings.Http2Enabled;
+        DarkModeCheckBox.IsChecked = _settings.DarkMode;
+        NativeMessagingCheckBox.IsChecked = _settings.NativeMessagingEnabled;
+        ExtensionIdTextBox.Text = _settings.ExtensionId;
         SettingsOverlay.Visibility = Visibility.Visible;
         FolderTextBox.Focus();
     }
@@ -1303,7 +1495,11 @@ public partial class MainWindow : Window
                 ClipboardMonitoring = ClipboardMonitoringCheckBox.IsChecked == true,
                 ShutdownWhenComplete = ShutdownWhenCompleteCheckBox.IsChecked == true,
                 CheckForUpdates = CheckForUpdatesCheckBox.IsChecked == true,
+                AutoUpdateDownload = AutoUpdateCheckBox.IsChecked == true,
                 Http2Enabled = Http2CheckBox.IsChecked == true,
+                DarkMode = DarkModeCheckBox.IsChecked == true,
+                NativeMessagingEnabled = NativeMessagingCheckBox.IsChecked == true,
+                ExtensionId = ExtensionIdTextBox.Text.Trim(),
                 SpeedLimitKBps = speedLimit,
                 WindowWidth = Width,
                 WindowHeight = Height,
@@ -1319,6 +1515,23 @@ public partial class MainWindow : Window
             GlobalConnectionLimiter.Shared.SetLimit(updated.GlobalConnectionLimit);
             _engine.SetSpeedLimit(updated.SpeedLimitKBps);
             ApplyClipboardMonitoring();
+            App.ApplyTheme(updated.DarkMode);
+            if (updated.NativeMessagingEnabled && updated.ExtensionId.Length > 0)
+            {
+                try
+                {
+                    ProtocolRegistration.RegisterNativeHost(updated.ExtensionId);
+                }
+                catch (Exception nativeException)
+                {
+                    ShowMessage(L("SettingsTitle"), nativeException.Message, MessageBoxImage.Warning);
+                }
+            }
+            else
+            {
+                ProtocolRegistration.UnregisterNativeHost();
+            }
+
             if (engineChanged)
             {
                 _engine = CreateEngine(updated);
@@ -1354,6 +1567,94 @@ public partial class MainWindow : Window
                 string.Format(L("BrowserRegisterFailedFormat"), exception.Message),
                 MessageBoxImage.Error);
         }
+    }
+
+    private async void ExportSettings_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            FileName = "hyperdl-settings.json",
+            Filter = "JSON (*.json)|*.json"
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await UserSettingsStore.SaveToAsync(_settings, dialog.FileName);
+            SetStatus(L("SettingsImportedFormat"));
+        }
+        catch (Exception exception)
+        {
+            ShowMessage(L("SettingsTitle"), exception.Message, MessageBoxImage.Warning);
+        }
+    }
+
+    private async void ImportSettings_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Filter = "JSON (*.json)|*.json"
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            var imported = UserSettingsStore.LoadFrom(dialog.FileName);
+            await ApplyImportedSettingsAsync(imported);
+        }
+        catch (Exception exception)
+        {
+            ShowMessage(
+                L("SettingsTitle"),
+                string.Format(L("SettingsInvalidFormat"), exception.Message),
+                MessageBoxImage.Warning);
+        }
+    }
+
+    private async Task ApplyImportedSettingsAsync(HyperDLSettings imported)
+    {
+        await UserSettingsStore.SaveAsync(imported);
+        _settings = imported;
+        _manager.Settings = imported;
+        GlobalConnectionLimiter.Shared.SetLimit(imported.GlobalConnectionLimit);
+        _engine = CreateEngine(imported);
+        _manager.UpdateEngine(_engine);
+        LocalizationManager.Instance.Apply(imported.Language);
+        App.ApplyTheme(imported.DarkMode);
+        ApplyClipboardMonitoring();
+        foreach (var job in _manager.Jobs)
+        {
+            job.RefreshLocalization();
+        }
+
+        SelectLanguageItem();
+        SelectComboByTag(ConnectionsComboBox, imported.ConnectionCount.ToString());
+        SelectComboByTag(ConcurrentComboBox, imported.MaximumConcurrentDownloads.ToString());
+        SelectComboByTag(BufferModeComboBox, imported.BufferMode.ToString());
+        FolderTextBox.Text = imported.DownloadDirectory;
+        PerHostTextBox.Text = imported.MaxConnectionsPerHost.ToString();
+        SpeedLimitTextBox.Text = imported.SpeedLimitKBps.ToString();
+        DynamicSegmentationCheckBox.IsChecked = imported.DynamicSegmentation;
+        AutoResumeCheckBox.IsChecked = imported.AutoResume;
+        ConfirmExternalCheckBox.IsChecked = imported.ConfirmExternalDownloads;
+        MinimizeToTrayCheckBox.IsChecked = imported.MinimizeToTray;
+        ShowNotificationsCheckBox.IsChecked = imported.ShowNotifications;
+        ClipboardMonitoringCheckBox.IsChecked = imported.ClipboardMonitoring;
+        ShutdownWhenCompleteCheckBox.IsChecked = imported.ShutdownWhenComplete;
+        CheckForUpdatesCheckBox.IsChecked = imported.CheckForUpdates;
+        AutoUpdateCheckBox.IsChecked = imported.AutoUpdateDownload;
+        Http2CheckBox.IsChecked = imported.Http2Enabled;
+        DarkModeCheckBox.IsChecked = imported.DarkMode;
+        NativeMessagingCheckBox.IsChecked = imported.NativeMessagingEnabled;
+        ExtensionIdTextBox.Text = imported.ExtensionId;
+        UpdateCommandStates();
+        SetStatus(L("SettingsImportedFormat"));
     }
 
     private void LanguageComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1512,6 +1813,22 @@ public partial class MainWindow : Window
         _trayIcon = null;
         _allowClose = true;
         Close();
+
+        if (_pendingInstallerPath is { Length: > 0 } installer && File.Exists(installer))
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(installer, "/SILENT")
+                {
+                    UseShellExecute = true
+                });
+            }
+            catch
+            {
+                // Launching the installer is best effort; the file stays in
+                // the temp folder for a manual run.
+            }
+        }
     }
 
     private void ApplyWindowBounds()

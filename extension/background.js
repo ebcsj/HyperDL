@@ -102,32 +102,31 @@ async function ensureDefaultSettings() {
 }
 
 /**
- * Hand the URL to the registered hyperdl:// handler.
- *
- * Navigating the current tab lets Chrome show its external-protocol prompt
- * without leaving a stray blank tab behind. If that is not possible (for
- * example, there is no originating tab), a new tab is used as a fallback.
+ * Try native messaging first (no external-protocol prompt, works even when
+ * no tab is available). Returns true when the app accepted the download.
  */
-async function openHyperDL(protocolUrl, tabId) {
-  if (Number.isInteger(tabId) && tabId >= 0) {
-    try {
-      await chrome.tabs.update(tabId, { url: protocolUrl });
-      return;
-    } catch (error) {
-      console.warn(
-        "HyperDL: could not hand off through the current tab; opening a new tab.",
-        error
-      );
-    }
+async function sendViaNativeMessaging(url, settings) {
+  if (!chrome.runtime.sendNativeMessage) {
+    return false;
   }
 
   try {
-    await chrome.tabs.create({ url: protocolUrl, active: true });
+    const response = await chrome.runtime.sendNativeMessage(
+      "com.ebcsj.hyperdl",
+      {
+        type: "add",
+        url: url,
+        connections: settings.connections === "auto" ? 0 : Number(settings.connections),
+        confirm: settings.confirmInApp ? 1 : 0,
+      }
+    );
+    return Boolean(response && response.ok);
   } catch (error) {
-    console.error(
-      "HyperDL: could not open the hyperdl:// protocol. Is HyperDL installed and registered?",
+    console.warn(
+      "HyperDL: native messaging unavailable, falling back to hyperdl://.",
       error
     );
+    return false;
   }
 }
 
@@ -143,6 +142,10 @@ async function handleLinkClick(info, tab) {
   }
 
   const settings = await loadSettings();
+  if (await sendViaNativeMessaging(linkUrl, settings)) {
+    return;
+  }
+
   const protocolUrl = buildProtocolUrl(linkUrl, settings);
   await openHyperDL(protocolUrl, tab && tab.id);
 }

@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text;
 using Microsoft.Win32;
 
 namespace HyperDL.Platform;
@@ -43,5 +44,50 @@ public static class ProtocolRegistration
         return !string.IsNullOrWhiteSpace(value) &&
                !string.IsNullOrWhiteSpace(executable) &&
                value.Contains(executable, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private const string NativeHostKeyPath =
+        @"Software\Google\Chrome\NativeMessagingHosts\com.ebcsj.hyperdl";
+
+    /// <summary>
+    /// Registers the native-messaging host for the supplied extension ID and
+    /// returns the manifest path. The manifest points Chrome at HyperDL.exe in
+    /// stdio mode; repeated calls refresh the manifest (new install path).
+    /// </summary>
+    public static string RegisterNativeHost(string extensionId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(extensionId);
+        var executable = Environment.ProcessPath;
+        if (string.IsNullOrWhiteSpace(executable) || !File.Exists(executable))
+        {
+            throw new InvalidOperationException("Could not locate HyperDL.exe.");
+        }
+
+        var manifestPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "HyperDL",
+            "com.ebcsj.hyperdl.json");
+        var manifest =
+            $$"""
+            {
+              "name": "{{NativeHost.HostName}}",
+              "description": "HyperDL native messaging host",
+              "path": "{{executable.Replace("\\", "\\\\")}}",
+              "type": "stdio",
+              "allowed_origins": ["chrome-extension://{{extensionId.Trim()}}/"]
+            }
+            """;
+        Directory.CreateDirectory(Path.GetDirectoryName(manifestPath)!);
+        File.WriteAllText(manifestPath, manifest, new UTF8Encoding(false));
+
+        using var key = Registry.CurrentUser.CreateSubKey(NativeHostKeyPath)
+            ?? throw new InvalidOperationException("Could not create the native host registry key.");
+        key.SetValue(null, manifestPath);
+        return manifestPath;
+    }
+
+    public static void UnregisterNativeHost()
+    {
+        Registry.CurrentUser.DeleteSubKeyTree(NativeHostKeyPath, false);
     }
 }

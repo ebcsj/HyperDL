@@ -1,0 +1,24 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <SolidColorBrush x:Key="WindowBackground" Color="#F4F6FB" />
+    <SolidColorBrush x:Key="CardBackground" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="CardBorder" Color="#E7ECF3" />
+    <SolidColorBrush x:Key="TextPrimary" Color="#0F172A" />
+    <SolidColorBrush x:Key="TextMuted" Color="#64748B" />
+    <SolidColorBrush x:Key="TextSubtle" Color="#94A3B8" />
+    <SolidColorBrush x:Key="FieldLabelText" Color="#475569" />
+    <SolidColorBrush x:Key="DetailText" Color="#334155" />
+    <SolidColorBrush x:Key="Accent" Color="#2563EB" />
+    <SolidColorBrush x:Key="AccentDark" Color="#1D4ED8" />
+    <SolidColorBrush x:Key="Success" Color="#15803D" />
+    <SolidColorBrush x:Key="Danger" Color="#DC2626" />
+    <SolidColorBrush x:Key="RowAlternate" Color="#F8FAFC" />
+    <SolidColorBrush x:Key="GridLine" Color="#EEF2F7" />
+    <SolidColorBrush x:Key="InputBackground" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="InputBorder" Color="#D9E2EC" />
+    <SolidColorBrush x:Key="ButtonBackground" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="ButtonBorder" Color="#D9E2EC" />
+    <SolidColorBrush x:Key="ButtonForeground" Color="#1E293B" />
+    <SolidColorBrush x:Key="ButtonHover" Color="#F1F5F9" />
+    <SolidColorBrush x:Key="ButtonPressed" Color="#E2E8F0" />
+</ResourceDictionary>

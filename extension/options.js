@@ -79,6 +79,10 @@ function readForm() {
 
 async function initialize() {
   elements.version.textContent = `Version ${chrome.runtime.getManifest().version}`;
+  const extensionIdElement = document.getElementById("extension-id");
+  if (extensionIdElement) {
+    extensionIdElement.textContent = chrome.runtime.id;
+  }
   populateConnections();
 
   let settings = { ...DEFAULT_SETTINGS };

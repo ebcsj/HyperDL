@@ -31,7 +31,11 @@ public sealed record HyperDLSettings
     public bool ShowNotifications { get; init; } = true;
     public bool ShutdownWhenComplete { get; init; }
     public bool CheckForUpdates { get; init; } = true;
+    public bool AutoUpdateDownload { get; init; } = true;
     public bool Http2Enabled { get; init; }
+    public bool NativeMessagingEnabled { get; init; }
+    public string ExtensionId { get; init; } = string.Empty;
+    public bool DarkMode { get; init; }
     public bool LegalUseAcknowledged { get; init; }
     public double WindowWidth { get; init; } = 1080;
     public double WindowHeight { get; init; } = 760;
@@ -69,14 +73,16 @@ public static class UserSettingsStore
 
     public static string SettingsFilePath => SettingsPath;
 
-    public static HyperDLSettings Load()
+    public static HyperDLSettings Load() => LoadFrom(SettingsPath);
+
+    public static HyperDLSettings LoadFrom(string path)
     {
-        if (!File.Exists(SettingsPath))
+        if (!File.Exists(path))
         {
             return new HyperDLSettings();
         }
 
-        var json = File.ReadAllText(SettingsPath);
+        var json = File.ReadAllText(path);
         using var document = JsonDocument.Parse(json);
         var hasBufferMode = document.RootElement.TryGetProperty(nameof(HyperDLSettings.BufferMode), out _);
         var settings = JsonSerializer.Deserialize<HyperDLSettings>(json, JsonOptions);
@@ -97,7 +103,9 @@ public static class UserSettingsStore
     public static void Validate(HyperDLSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        if (string.IsNullOrWhiteSpace(settings.DownloadDirectory) ||
+        if (settings.ExtensionId is null ||
+            settings.ExtensionId.Length > 128 ||
+            string.IsNullOrWhiteSpace(settings.DownloadDirectory) ||
             settings.ConnectionCount is not (0 or 1 or 2 or 4 or 8 or 16 or 32 or 64) ||
             settings.MaximumConcurrentDownloads is < 1 or > 64 ||
             settings.GlobalConnectionLimit is < 1 or > DownloadEngine.MaximumSegmentCount ||
@@ -117,16 +125,22 @@ public static class UserSettingsStore
         }
     }
 
-    public static async Task SaveAsync(
+    public static Task SaveAsync(
         HyperDLSettings settings,
+        CancellationToken cancellationToken = default) =>
+        SaveToAsync(settings, SettingsPath, cancellationToken);
+
+    public static async Task SaveToAsync(
+        HyperDLSettings settings,
+        string path,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(settings);
         Validate(settings);
-        Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
-        var temporaryPath = SettingsPath + ".tmp";
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var temporaryPath = path + ".tmp";
         var json = JsonSerializer.Serialize(settings, JsonOptions);
         await File.WriteAllTextAsync(temporaryPath, json, cancellationToken).ConfigureAwait(false);
-        File.Move(temporaryPath, SettingsPath, overwrite: true);
+        File.Move(temporaryPath, path, overwrite: true);
     }
 }

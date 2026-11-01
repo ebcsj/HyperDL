@@ -5,7 +5,7 @@ using System.Text.Json;
 
 namespace HyperDL.Platform;
 
-public sealed record UpdateInfo(string Tag, string Url);
+public sealed record UpdateInfo(string Tag, string Url, string? InstallerUrl, string? SumsUrl);
 
 /// <summary>
 /// Queries the GitHub Releases API for the latest published release. The
@@ -55,7 +55,33 @@ public static class UpdateChecker
                       !string.IsNullOrWhiteSpace(urlElement.GetString())
                 ? urlElement.GetString()!
                 : "https://github.com/ebcsj/HyperDL/releases";
-            return new UpdateInfo(tag, url);
+
+            string? installerUrl = null;
+            string? sumsUrl = null;
+            if (root.TryGetProperty("assets", out var assets) &&
+                assets.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var asset in assets.EnumerateArray())
+                {
+                    if (asset.TryGetProperty("name", out var nameElement) &&
+                        asset.TryGetProperty("browser_download_url", out var downloadElement) &&
+                        nameElement.GetString() is { } assetName &&
+                        downloadElement.GetString() is { } downloadUrl)
+                    {
+                        if (assetName.StartsWith("HyperDL_", StringComparison.OrdinalIgnoreCase) &&
+                            assetName.EndsWith("_Setup.exe", StringComparison.OrdinalIgnoreCase))
+                        {
+                            installerUrl = downloadUrl;
+                        }
+                        else if (assetName.Equals("SHA256SUMS.txt", StringComparison.OrdinalIgnoreCase))
+                        {
+                            sumsUrl = downloadUrl;
+                        }
+                    }
+                }
+            }
+
+            return new UpdateInfo(tag, url, installerUrl, sumsUrl);
         }
         catch
         {
