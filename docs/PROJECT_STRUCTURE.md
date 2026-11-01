@@ -13,7 +13,8 @@ work; the source namespaces and application behavior remain unchanged.
 | `Core/Networking/` | HTTP metadata probe, HTTP/HTTPS URL validation, shared connection limiter, and update version comparison. |
 | `Core/Storage/` | SQLite download history/recovery and user settings persistence. |
 | `Localization/` | Runtime localization manager, XAML markup extension, and the English/Traditional Chinese string tables. |
-| `Platform/` | `hyperdl://` protocol registration helpers. |
+| `Platform/` | `hyperdl://` protocol + native-messaging host registration, IPC protocol, CLI console output, update check/download. |
+| `Themes/` | Light and dark theme resource dictionaries. |
 | `Assets/` | Application icon (`app.ico`) used by the executable and tray. |
 | `TextPromptWindow.cs` | Code-only modal prompt used for URL editing. |
 

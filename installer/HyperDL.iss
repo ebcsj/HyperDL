@@ -1,5 +1,5 @@
 #define AppName "HyperDL"
-#define AppVersion "1.3.0.0"
+#define AppVersion "1.4.0.0"
 #define AppPublisher "Kerby Chow"
 
 [Setup]

@@ -4,8 +4,8 @@ Use this checklist for every public HyperDL release. Release tags must look like
 
 ## 1. Version bump
 
-- [ ] Update `<Version>` in `HyperDL.csproj` (currently `1.3.0`).
-- [ ] Update `#define AppVersion` in `installer/HyperDL.iss` (currently `1.3.0.0`).
+- [ ] Update `<Version>` in `HyperDL.csproj` (currently `1.4.0`).
+- [ ] Update `#define AppVersion` in `installer/HyperDL.iss` (currently `1.4.0.0`).
 - [ ] Update the extension version in its manifest under `extension/`.
 - [ ] Grep the docs for old version strings and update them.
 - [ ] Confirm the release tag matches the version (`vX.Y.Z`).

@@ -64,6 +64,21 @@ HyperDL 會保留已完成的檔案於磁碟，直到你自行刪除。
 排程的工作會在佇列中等待到指定時間。右鍵該工作選擇 `排程…`；清空輸入框並確認
 即可立即開始。修改排程僅適用於尚未開始下載的工作。
 
+## 原生訊息無法連線
+
+1. 在擴充功能選項頁複製**擴充功能 ID**。
+2. 在 HyperDL 設定啟用「原生訊息」並貼上 ID 後儲存。這會在
+   `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.ebcsj.hyperdl`
+   註冊主機。
+3. 到 `chrome://extensions` 重新載入擴充功能。若交付仍退回 `hyperdl://`
+   協定確認框，代表主機註冊不存在或 ID 不符；協定後備永遠可用。
+
+## CLI 指令沒有輸出
+
+CLI 指令需要執行中的 HyperDL 執行個體（透過本機 pipe 通訊），並需有主控台
+父程序——請從 cmd 或 PowerShell 執行。若沒有執行中的執行個體，請先啟動
+HyperDL；只有 `--import` 可以在冷啟動時直接使用。
+
 ## 建置或安裝問題
 
 - 開發建置需要 Windows x64 和 .NET 8 SDK；執行 `dotnet restore HyperDL.sln` 後再

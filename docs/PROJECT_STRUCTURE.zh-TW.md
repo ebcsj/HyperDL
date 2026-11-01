@@ -12,7 +12,8 @@
 | `Core/Networking/` | HTTP 探測、HTTP/HTTPS 網址驗證、共用連線限制器及更新版本比較。 |
 | `Core/Storage/` | SQLite 下載歷史／恢復資料及使用者設定保存。 |
 | `Localization/` | 執行時本地化管理、XAML markup 擴充及英文／繁體中文字串表。 |
-| `Platform/` | `hyperdl://` 協定註冊輔助。 |
+| `Platform/` | `hyperdl://` 協定＋原生訊息主機註冊、IPC 協定、CLI 主控台輸出、更新檢查／下載。 |
+| `Themes/` | 淺色與深色主題資源字典。 |
 | `Assets/` | 應用程式圖示（`app.ico`），用於執行檔與系統匣。 |
 | `TextPromptWindow.cs` | 以程式碼建構的網址編輯對話框。 |
 

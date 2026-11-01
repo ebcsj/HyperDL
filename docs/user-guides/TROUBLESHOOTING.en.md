@@ -82,6 +82,23 @@ and choose `Schedule…`; clearing the box and confirming starts the job
 immediately. Changing the schedule only applies to jobs that have not started
 downloading yet.
 
+## Native messaging does not connect
+
+1. In the extension's options page, copy the **Extension ID**.
+2. In HyperDL Settings, enable **Native messaging** and paste the ID, then
+   save. This registers the host under
+   `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.ebcsj.hyperdl`.
+3. Reload the extension on `chrome://extensions`. If handoff still falls back
+   to the `hyperdl://` protocol prompt, the host registration is missing or
+   the ID does not match; the protocol fallback always works.
+
+## CLI commands print nothing
+
+CLI commands require a running HyperDL instance (they communicate over the
+local pipe) and a console parent; run them from cmd or PowerShell. If no
+instance is running, start HyperDL first — `--import` is the one command
+that also works as a cold start.
+
 ## Build or installation problems
 
 - Development builds require Windows x64 and the .NET 8 SDK. Run

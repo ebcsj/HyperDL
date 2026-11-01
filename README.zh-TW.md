@@ -269,7 +269,8 @@ dotnet test HyperDL.sln -c Release --no-build
 - [x] M4：Chrome 擴充功能橋接、協定註冊、發佈/安裝器/CI 更新
 - [x] M5（v1.2）：系統匣、下載通知、opt-in 剪貼簿監看、佇列完成關機確認
 - [x] M6（v1.3）：SHA-256 驗證、擴充功能參數、分段進度條、更新檢查、HTTP/2 開關、排程下載
-- [ ] M7：MVVM、連線預熱、鏡像下載（詳見 ROADMAP.md）
+- [x] M7（v1.4）：自動更新、CLI 指令（JSON 回覆）、原生訊息、深色主題、設定匯入／匯出、佇列拖曳排序
+- [ ] M8：MVVM、連線預熱、鏡像下載（詳見 ROADMAP.md）
 
 建立 Windows x64 self-contained 發布目錄：
 

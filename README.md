@@ -486,7 +486,8 @@ installation directory. See “Removing all local data” for manual cleanup.
 - [x] M4: Chrome extension bridge, protocol registration, publish/installer/CI updates
 - [x] M5 (v1.2): system tray, download notifications, opt-in clipboard monitoring, shutdown prompt
 - [x] M6 (v1.3): SHA-256 verification, extension parameters, segment bars, update check, HTTP/2 option, scheduling
-- [ ] M7: MVVM toolkit, connection warm-up, mirrors (see ROADMAP.md)
+- [x] M7 (v1.4): auto-update, CLI commands with JSON responses, native messaging, dark theme, settings import/export, queue drag reorder
+- [ ] M8: MVVM toolkit, connection warm-up, mirrors (see ROADMAP.md)
 
 ## 📜 License
 

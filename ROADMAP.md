@@ -49,7 +49,20 @@
 - [x] 版本檢查：啟動時查 GitHub Releases API（僅提示連結，不自動安裝）
 - [x] 分段進度視覺化：詳細區每段迷你進度條 + 完成摘要
 
-### 候選待辦（未承諾）
+### v1.4.0 — 本輪範圍
+
+### 發布與整合 ✅
+- [x] GitHub 遠端建立並推送全部 commits 與 tags；Release workflow 由 tag 觸發
+- [x] CHANGELOG.md（1.1.0 → 1.4.0）
+- [x] CLI／IPC 雙向指令：`--list`、`--pause-all`、`--resume-all`、`--clear-completed`、`--import <file>`，JSON 回覆（named pipe + AttachConsole）
+- [x] Native Messaging：stdio host（`--native-host`）、host manifest 註冊（擴充功能 ID 綁定）、擴充功能原生優先＋協定 fallback
+
+### UI ✅
+- [x] 深色主題：主題字典 + 執行時切換（`DarkMode` 設定）
+- [x] 設定匯入／匯出（JSON）
+- [x] 佇列拖曳排序
+
+## 候選待辦（未承諾）
 - [ ] Native Messaging（取代 hyperdl:// 協定橋接，免除 Chrome 外部協定確認框）
 - [ ] CLI 擴充（--list、--pause-all、JSON 輸出）
 - [ ] 自適應連線數精進（依每條連線吞吐動態增減）

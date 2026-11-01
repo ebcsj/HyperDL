@@ -108,6 +108,22 @@ down; the shutdown can be cancelled with `shutdown /a`.
   compares the latest GitHub release to its own version and shows a link in
   the status bar; it never downloads or installs anything.
 
+## Command line, dark theme, and maintenance
+
+- `HyperDL.exe --list` prints the download queue as JSON; `--pause-all`,
+  `--resume-all`, and `--clear-completed` control the running instance;
+  `--import <file>` batch-adds URLs (one per line). Commands talk to the
+  running instance and print a JSON response in the console.
+- `Dark theme` in Settings switches the UI immediately and persists.
+- `Export settings…` / `Import settings…` in Settings move your
+  configuration between machines as JSON.
+- Drag rows in the download list to reorder the queue.
+- Native messaging (optional): paste the extension ID shown in the
+  extension's options page into Settings and enable `Native messaging` —
+  the extension then hands links to HyperDL without Chrome's
+  external-protocol prompt; the `hyperdl://` protocol keeps working as a
+  fallback.
+
 ## Safe use
 
 Only download content you are authorized to obtain, and follow website terms
