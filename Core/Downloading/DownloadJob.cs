@@ -26,6 +26,9 @@ public sealed class DownloadJob : INotifyPropertyChanged
     private string? _errorMessage;
     private DownloadErrorKind? _errorKind;
     private string? _targetPath;
+    private string? _actualSha256;
+    private DateTime? _startAfter;
+    private IReadOnlyList<DownloadSegmentProgress>? _segmentsSnapshot;
 
     public DownloadJob(
         DownloadMetadata metadata,
@@ -247,6 +250,65 @@ public sealed class DownloadJob : INotifyPropertyChanged
         }
     }
 
+    /// <summary>Lowercase hexadecimal SHA-256 of the finished file, when known.</summary>
+    public string? ActualSha256
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _actualSha256;
+            }
+        }
+    }
+
+    /// <summary>Start time scheduled by the user, when set (queued jobs only).</summary>
+    public DateTime? StartAfter
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _startAfter;
+            }
+        }
+    }
+
+    public string? ScheduleText => StartAfter?.ToString("yyyy-MM-dd HH:mm");
+
+    /// <summary>Latest per-segment progress snapshot reported by the engine.</summary>
+    public IReadOnlyList<DownloadSegmentProgress>? SegmentsSnapshot
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _segmentsSnapshot;
+            }
+        }
+    }
+
+    public string SegmentsSummary
+    {
+        get
+        {
+            lock (_sync)
+            {
+                if (_segmentsSnapshot is null || _segmentsSnapshot.Count == 0)
+                {
+                    return string.Empty;
+                }
+
+                var completed = _segmentsSnapshot.Count(segment =>
+                    segment.Status == DownloadSegmentStatus.Completed);
+                return string.Format(
+                    LocalizationManager.GetString("SegmentsSummaryFormat"),
+                    completed,
+                    _segmentsSnapshot.Count);
+            }
+        }
+    }
+
     public bool IsResumable => Session is not null;
     public bool CanPause => Status is DownloadSessionStatus.Downloading or DownloadSessionStatus.Waiting;
     public bool CanResume => Status is DownloadSessionStatus.Paused or
@@ -394,6 +456,14 @@ public sealed class DownloadJob : INotifyPropertyChanged
                 changed.Add(nameof(ActiveConnections));
             }
 
+            if (progress.Segments is not null &&
+                !ReferenceEquals(_segmentsSnapshot, progress.Segments))
+            {
+                _segmentsSnapshot = progress.Segments;
+                changed.Add(nameof(SegmentsSnapshot));
+                changed.Add(nameof(SegmentsSummary));
+            }
+
             if (_status == DownloadSessionStatus.Waiting)
             {
                 _status = DownloadSessionStatus.Downloading;
@@ -465,6 +535,27 @@ public sealed class DownloadJob : INotifyPropertyChanged
         Raise(nameof(TargetPath));
     }
 
+    internal void SetSha256(string? sha256)
+    {
+        lock (_sync)
+        {
+            _actualSha256 = sha256;
+        }
+
+        Raise(nameof(ActualSha256));
+    }
+
+    internal void SetSchedule(DateTime? startAfter)
+    {
+        lock (_sync)
+        {
+            _startAfter = startAfter;
+        }
+
+        Raise(nameof(StartAfter));
+        Raise(nameof(ScheduleText));
+    }
+
     internal void ClearError()
     {
         lock (_sync)
@@ -514,6 +605,7 @@ public sealed class DownloadJob : INotifyPropertyChanged
         Raise(nameof(ProgressText));
         Raise(nameof(SpeedText));
         Raise(nameof(EtaText));
+        Raise(nameof(SegmentsSummary));
     }
 
     private void Raise([CallerMemberName] string? propertyName = null) =>

@@ -290,7 +290,7 @@ public sealed class DownloadEngine
         IProgress<DownloadProgress>? progress,
         CancellationToken cancellationToken)
     {
-        using var request = CreateRequest(uri, range: null, metadata: null);
+        using var request = CreateRequest(uri, range: null, metadata: null, _options.UseHttp2);
         using var connectionLease = await _connectionLimiter.AcquireAsync(cancellationToken)
             .ConfigureAwait(false);
         using var response = await _client.SendAsync(
@@ -677,7 +677,8 @@ public sealed class DownloadEngine
         using var request = CreateRequest(
             session.Metadata.FinalUri,
             new ByteRange(requestStart, requestEnd),
-            session.Metadata);
+            session.Metadata,
+            _options.UseHttp2);
         using var response = await _client.SendAsync(
             request,
             HttpCompletionOption.ResponseHeadersRead,
@@ -858,12 +859,15 @@ public sealed class DownloadEngine
     private static HttpRequestMessage CreateRequest(
         Uri uri,
         ByteRange? range,
-        DownloadMetadata? metadata)
+        DownloadMetadata? metadata,
+        bool useHttp2)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, uri)
         {
-            Version = HttpVersion.Version11,
-            VersionPolicy = HttpVersionPolicy.RequestVersionExact
+            Version = useHttp2 ? HttpVersion.Version20 : HttpVersion.Version11,
+            VersionPolicy = useHttp2
+                ? HttpVersionPolicy.RequestVersionOrLower
+                : HttpVersionPolicy.RequestVersionExact
         };
         request.Headers.AcceptEncoding.Add(new StringWithQualityHeaderValue("identity"));
         if (range is { } selectedRange)

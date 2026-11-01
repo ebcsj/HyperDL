@@ -80,6 +80,73 @@ public class DownloadDatabaseTests
         Assert.Equal(session.Segments[0].EndOffset, loaded.Segments[0].EndOffset);
     }
 
+    [Fact]
+    public async Task Initialize_MigratesPendingDownloadsTableToStartAfter()
+    {
+        using var context = new DatabaseTestContext();
+        var dbPath = Path.Combine(context.DirectoryPath, "hyperdl.db");
+        await using (var connection = new SqliteConnection(
+            new SqliteConnectionStringBuilder { DataSource = dbPath }.ToString()))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TABLE PendingDownloads (
+                    Id TEXT PRIMARY KEY,
+                    Url TEXT NOT NULL,
+                    FileName TEXT NOT NULL,
+                    RequestedConnections INTEGER NOT NULL,
+                    BufferMode TEXT NOT NULL,
+                    CreatedAt TEXT NOT NULL
+                );
+                INSERT INTO PendingDownloads VALUES
+                    ('bf58e5a1-1111-4a6b-9a54-000000000001',
+                     'https://unit.test/a.bin', 'a.bin', 2, 'Auto',
+                     '2026-01-01T00:00:00.0000000Z');
+                PRAGMA user_version = 2;
+                """;
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var database = new DownloadDatabase(dbPath);
+        await database.InitializeAsync();
+
+        var pending = Assert.Single(await database.LoadPendingAsync());
+        Assert.Equal(2, pending.RequestedConnections);
+        Assert.Null(pending.StartAfter);
+
+        await using (var connection = new SqliteConnection(
+            new SqliteConnectionStringBuilder { DataSource = dbPath }.ToString()))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = "PRAGMA user_version;";
+            var version = (long)(await command.ExecuteScalarAsync())!;
+            Assert.Equal(3, version);
+        }
+    }
+
+    [Fact]
+    public async Task SavePending_PersistsScheduledStartAfter()
+    {
+        using var context = new DatabaseTestContext();
+        var database = new DownloadDatabase(Path.Combine(context.DirectoryPath, "hyperdl.db"));
+        var start = new DateTime(2026, 12, 1, 8, 30, 0, DateTimeKind.Local);
+
+        await database.SavePendingAsync(new PendingDownload(
+            Guid.NewGuid(),
+            new Uri("https://unit.test/a.bin"),
+            "a.bin",
+            4,
+            BufferMode.Auto,
+            start));
+
+        var pending = Assert.Single(await database.LoadPendingAsync());
+        Assert.Equal(4, pending.RequestedConnections);
+        Assert.NotNull(pending.StartAfter);
+        Assert.Equal(start, pending.StartAfter!.Value, TimeSpan.FromSeconds(1));
+    }
+
     private static DownloadMetadata CreateMetadata() =>
         new(
             new Uri("https://example.test/archive.bin"),

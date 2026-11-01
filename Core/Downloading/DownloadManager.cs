@@ -117,6 +117,11 @@ public sealed class DownloadManager : IAsyncDisposable
                 entry.RequestedConnections,
                 entry.BufferMode,
                 entry.Id);
+            if (entry.StartAfter is { } startAfter)
+            {
+                job.SetSchedule(startAfter);
+            }
+
             AddJob(job);
             if (autoResume)
             {
@@ -159,7 +164,9 @@ public sealed class DownloadManager : IAsyncDisposable
             invalid));
     }
 
-    public bool AddUrl(Uri uri)
+    public bool AddUrl(Uri uri) => AddUrl(uri, requestedConnections: null);
+
+    public bool AddUrl(Uri uri, int? requestedConnections)
     {
         ArgumentNullException.ThrowIfNull(uri);
         if (!DownloadUrlValidator.IsSupported(uri))
@@ -172,16 +179,47 @@ public sealed class DownloadManager : IAsyncDisposable
             return false;
         }
 
+        var connections = Math.Clamp(
+            requestedConnections ?? _settings.ConnectionCount,
+            0,
+            DownloadEngine.MaximumSegmentCount);
         var metadata = CreateQueuedMetadata(uri, null);
         var job = new DownloadJob(
             metadata,
             null,
-            _settings.ConnectionCount,
+            connections,
             _settings.BufferMode);
         AddJob(job);
         PersistPending(job);
         StartJob(job);
         return true;
+    }
+
+    /// <summary>
+    /// Sets or clears a future start time for a queued (not yet probed) job.
+    /// Running or finished jobs ignore schedules.
+    /// </summary>
+    public void Schedule(DownloadJob job, DateTime? startAfter)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+        if (_disposed || job.Session is not null ||
+            job.Status is DownloadSessionStatus.Completed or DownloadSessionStatus.Cancelled)
+        {
+            return;
+        }
+
+        job.SetSchedule(startAfter);
+        if (job.Session is null && job.RunTask is { IsCompleted: false })
+        {
+            // Restart the run so its schedule loop re-evaluates immediately.
+            job.Cancellation?.Cancel();
+            StartJob(job);
+        }
+
+        if (job.Status is DownloadSessionStatus.Waiting or DownloadSessionStatus.Downloading)
+        {
+            PersistPending(job);
+        }
     }
 
     public void Pause(DownloadJob job)
@@ -398,7 +436,8 @@ public sealed class DownloadManager : IAsyncDisposable
                 job.SourceUri,
                 job.FileName,
                 job.RequestedConnections,
-                job.BufferMode),
+                job.BufferMode,
+                job.StartAfter),
             cancellationToken).ConfigureAwait(false);
         StartJob(job);
         return true;
@@ -514,7 +553,8 @@ public sealed class DownloadManager : IAsyncDisposable
                 job.SourceUri,
                 job.FileName,
                 job.RequestedConnections,
-                job.BufferMode),
+                job.BufferMode,
+                job.StartAfter),
             token));
 
     private void ForgetPending(DownloadJob job) =>
@@ -599,6 +639,23 @@ public sealed class DownloadManager : IAsyncDisposable
         try
         {
             SetStatus(job, DownloadSessionStatus.Waiting);
+
+            // Park scheduled jobs before acquiring a concurrency lease so a
+            // future start time never holds a slot. The loop re-reads the
+            // schedule so clearing it takes effect immediately, and far-future
+            // schedules re-arm daily instead of one giant timer.
+            while (job.StartAfter is { } startAfter && startAfter > DateTime.Now)
+            {
+                var delay = startAfter - DateTime.Now;
+                if (delay > TimeSpan.FromDays(1))
+                {
+                    delay = TimeSpan.FromDays(1);
+                }
+
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
             lease = await _concurrency.AcquireAsync(cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -647,8 +704,10 @@ public sealed class DownloadManager : IAsyncDisposable
                     cancellationToken,
                     job.BufferMode).ConfigureAwait(false);
                 await _database.SaveSessionAsync(session).ConfigureAwait(false);
+                var sha256 = await ComputeHashQuietlyAsync(path, cancellationToken).ConfigureAwait(false);
                 RunOnUi(() =>
                 {
+                    job.SetSha256(sha256);
                     job.SetTargetPath(path);
                     job.SetStatus(DownloadSessionStatus.Completed);
                     JobCompleted?.Invoke(this, job);
@@ -662,8 +721,10 @@ public sealed class DownloadManager : IAsyncDisposable
                     cancellationToken,
                     job.RequestedConnections,
                     job.BufferMode).ConfigureAwait(false);
+                var sha256 = await ComputeHashQuietlyAsync(path, cancellationToken).ConfigureAwait(false);
                 RunOnUi(() =>
                 {
+                    job.SetSha256(sha256);
                     job.SetTargetPath(path);
                     job.SetStatus(DownloadSessionStatus.Completed);
                     JobCompleted?.Invoke(this, job);
@@ -672,6 +733,12 @@ public sealed class DownloadManager : IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
+            // A restarted or superseded run must not touch the job state.
+            if (job.Cancellation is null || job.Cancellation.Token != cancellationToken)
+            {
+                return;
+            }
+
             var session = job.Session;
             var paused = job.PauseRequested ||
                          session?.Status is DownloadSessionStatus.Paused or DownloadSessionStatus.Pausing;
@@ -703,6 +770,12 @@ public sealed class DownloadManager : IAsyncDisposable
         }
         catch (Exception exception)
         {
+            // A restarted or superseded run must not touch the job state.
+            if (job.Cancellation is null || job.Cancellation.Token != cancellationToken)
+            {
+                return;
+            }
+
             var session = job.Session;
             var status = session?.Status is DownloadSessionStatus.Recoverable
                 ? DownloadSessionStatus.Recoverable
@@ -729,8 +802,25 @@ public sealed class DownloadManager : IAsyncDisposable
         }
     }
 
-    private async Task SaveQuietlyAsync(DownloadSession? session)
+    /// <summary>
+    /// Computes the SHA-256 of a finished download; failures never block the
+    /// completed job from being reported.
+    /// </summary>
+    private static async Task<string?> ComputeHashQuietlyAsync(
+        string path,
+        CancellationToken cancellationToken)
     {
+        try
+        {
+            return await FileHash.ComputeSha256Async(path, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task SaveQuietlyAsync(DownloadSession? session)    {
         if (session is null)
         {
             return;

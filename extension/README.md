@@ -87,10 +87,14 @@ The desktop app is responsible for validating the URL again, limiting launches
 to HTTP/HTTPS, and showing its confirmation dialog. The extension never sends
 non-HTTP(S) schemes.
 
-> **Note:** the current HyperDL app release reads the `url` parameter and
-> applies its own connection-count and confirmation settings. The
-> `connections` and `confirm` parameters are part of the contract for a future
-> app update and are ignored by the current app version.
+The app honors the parameters as follows:
+
+- `connections` overrides the per-download connection count for the handed-off
+  link (`auto` keeps the app default).
+- `confirm=1` always shows the app confirmation dialog before adding the
+  download. `confirm=0` does **not** bypass the app's own
+  "confirm downloads opened by the browser extension" setting — when that
+  setting is on, the dialog is shown regardless.
 
 ## Permissions
 
@@ -161,7 +165,7 @@ or drag the direct link into HyperDL.
 
 ## Version
 
-Extension version: **1.2.0**
+Extension version: **1.3.0**
 
 This first version uses the custom protocol bridge. Native Messaging may be
 evaluated later for a tighter integration.

@@ -9,6 +9,12 @@ public sealed record DownloadEngineOptions
     public BufferMode BufferMode { get; init; } = BufferMode.Auto;
 
     /// <summary>
+    /// Allows HTTP/2 negotiation. The default keeps strict HTTP/1.1 requests;
+    /// enable only after measuring, since some servers behave differently.
+    /// </summary>
+    public bool UseHttp2 { get; init; }
+
+    /// <summary>
     /// Aggregate speed limit for the engine in KiB/s. Zero disables limiting.
     /// </summary>
     public int SpeedLimitKBps { get; init; }

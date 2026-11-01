@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -18,8 +19,7 @@ namespace HyperDL;
 
 public partial class MainWindow : Window
 {
-    private readonly IReadOnlyList<Uri> _initialUris;
-    private readonly bool _externalActivation;
+    private readonly ActivationRequest? _activation;
     private readonly string? _startupError;
     private readonly DispatcherTimer _timer = new()
     {
@@ -41,14 +41,12 @@ public partial class MainWindow : Window
 
     public MainWindow(
         HyperDLSettings settings,
-        IReadOnlyList<Uri>? initialUris = null,
-        bool externalActivation = false,
+        ActivationRequest? activation = null,
         string? startupError = null)
     {
         InitializeComponent();
         _settings = settings;
-        _initialUris = initialUris ?? [];
-        _externalActivation = externalActivation;
+        _activation = activation;
         _startupError = startupError;
 
         _engine = CreateEngine(_settings);
@@ -373,22 +371,54 @@ public partial class MainWindow : Window
         }
 
         _initializing = false;
-        if (_initialUris.Count > 0)
+        if (_activation is { Uris.Count: > 0 } request)
         {
-            await HandleActivationAsync(_initialUris, _externalActivation);
+            await HandleActivationAsync(request);
         }
 
         UrlTextBox.Focus();
         UpdateCommandStates();
         SetStatus(L("ReadyStatus"));
+        _ = CheckForUpdatesQuietlyAsync();
+    }
+
+    private async Task CheckForUpdatesQuietlyAsync()
+    {
+        if (!_settings.CheckForUpdates)
+        {
+            return;
+        }
+
+        try
+        {
+            var info = await UpdateChecker.CheckLatestAsync().ConfigureAwait(true);
+            if (info is null)
+            {
+                return;
+            }
+
+            var current = Assembly.GetEntryAssembly()
+                ?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+                ?.InformationalVersion;
+            if (UpdateCheck.IsNewerVersion(current, info.Tag))
+            {
+                SetStatus(string.Format(L("UpdateAvailableFormat"), info.Tag, info.Url));
+            }
+        }
+        catch
+        {
+            // Update checks are best effort and never disturb startup.
+        }
     }
 
     /// <summary>
-    /// Entry point for CLI arguments and the single-instance pipe.
+    /// Entry point for CLI arguments and the single-instance pipe. The app
+    /// setting always confirms external activations; the extension's confirm=1
+    /// adds a confirmation back, but confirm=0 never bypasses the setting.
     /// </summary>
-    public Task HandleActivationAsync(IReadOnlyList<Uri> uris, bool external)
+    public Task HandleActivationAsync(ActivationRequest request)
     {
-        if (uris.Count == 0)
+        if (request.Uris.Count == 0)
         {
             BringToFront();
             return Task.CompletedTask;
@@ -396,10 +426,11 @@ public partial class MainWindow : Window
 
         BringToFront();
 
-        if (external && _settings.ConfirmExternalDownloads)
+        var showConfirm = _settings.ConfirmExternalDownloads || request.Confirm == true;
+        if (request.External && showConfirm)
         {
-            var preview = string.Join(Environment.NewLine, uris.Take(5));
-            if (uris.Count > 5)
+            var preview = string.Join(Environment.NewLine, request.Uris.Take(5));
+            if (request.Uris.Count > 5)
             {
                 preview += Environment.NewLine + "…";
             }
@@ -419,9 +450,9 @@ public partial class MainWindow : Window
 
         var added = 0;
         var skipped = 0;
-        foreach (var uri in uris)
+        foreach (var uri in request.Uris)
         {
-            if (_manager.AddUrl(uri))
+            if (_manager.AddUrl(uri, request.Connections))
             {
                 added++;
             }
@@ -434,10 +465,6 @@ public partial class MainWindow : Window
         if (added > 0)
         {
             _shutdownPrompted = false;
-        }
-
-        if (added > 0)
-        {
             SetStatus(string.Format(L("BatchAddedFormat"), added));
         }
         else if (skipped > 0)
@@ -707,6 +734,130 @@ public partial class MainWindow : Window
 
     private void ContextCopyDetails_Click(object sender, RoutedEventArgs e) =>
         CopySelectedDetails();
+
+    private async void ContextVerifySha256_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedJob is not { } job)
+        {
+            SetStatus(L("NoSelectionMessage"));
+            return;
+        }
+
+        var path = job.TargetPath;
+        if (string.IsNullOrEmpty(path) || !File.Exists(path))
+        {
+            ShowMessage(
+                L("VerifySha256Menu"),
+                string.IsNullOrEmpty(path) ? L("StatusQueued") : path,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        var expected = TextPromptWindow.Prompt(
+            this,
+            L("VerifySha256Menu"),
+            L("Sha256PromptLabel"),
+            job.ActualSha256 ?? string.Empty);
+        if (string.IsNullOrWhiteSpace(expected))
+        {
+            return;
+        }
+
+        expected = expected.Trim().ToLowerInvariant();
+        SetStatus(L("Sha256Computing"));
+        try
+        {
+            var actual = job.ActualSha256 ?? await FileHash.ComputeSha256Async(path);
+            job.SetSha256(actual);
+            if (string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
+            {
+                ShowMessage(L("VerifySha256Menu"), L("Sha256Matched"), MessageBoxImage.Information);
+            }
+            else
+            {
+                ShowMessage(
+                    L("VerifySha256Menu"),
+                    string.Format(L("Sha256Mismatched"), expected, actual),
+                    MessageBoxImage.Warning);
+            }
+        }
+        catch (Exception exception)
+        {
+            ShowMessage(L("VerifySha256Menu"), exception.Message, MessageBoxImage.Error);
+        }
+        finally
+        {
+            SetStatus(L("ReadyStatus"));
+        }
+    }
+
+    private async void ContextCopySha256_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedJob is not { } job)
+        {
+            SetStatus(L("NoSelectionMessage"));
+            return;
+        }
+
+        try
+        {
+            var hash = job.ActualSha256;
+            if (hash is null && job.TargetPath is { Length: > 0 } path && File.Exists(path))
+            {
+                SetStatus(L("Sha256Computing"));
+                hash = await FileHash.ComputeSha256Async(path);
+                job.SetSha256(hash);
+            }
+
+            if (hash is null)
+            {
+                SetStatus(L("Sha256Computing"));
+                return;
+            }
+
+            Clipboard.SetText(hash);
+            SetStatus(L("Sha256Copied"));
+        }
+        catch
+        {
+            // The clipboard can be locked by another process.
+        }
+    }
+
+    private void ContextSchedule_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedJob is not { } job)
+        {
+            SetStatus(L("NoSelectionMessage"));
+            return;
+        }
+
+        var value = TextPromptWindow.Prompt(
+            this,
+            L("ScheduleMenu"),
+            L("SchedulePromptLabel"),
+            job.ScheduleText ?? string.Empty);
+        if (value is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            _manager.Schedule(job, null);
+            SetStatus(L("ReadyStatus"));
+            return;
+        }
+
+        if (!DateTime.TryParse(value, CultureInfo.CurrentCulture, DateTimeStyles.None, out var start))
+        {
+            ShowMessage(L("ScheduleMenu"), L("ScheduleParseError"), MessageBoxImage.Warning);
+            return;
+        }
+
+        _manager.Schedule(job, start);
+        SetStatus(string.Format(L("ScheduledForFormat"), start.ToString("yyyy-MM-dd HH:mm")));
+    }
 
     private async void ContextEditUrl_Click(object sender, RoutedEventArgs e)
     {
@@ -1072,6 +1223,8 @@ public partial class MainWindow : Window
         ShowNotificationsCheckBox.IsChecked = _settings.ShowNotifications;
         ClipboardMonitoringCheckBox.IsChecked = _settings.ClipboardMonitoring;
         ShutdownWhenCompleteCheckBox.IsChecked = _settings.ShutdownWhenComplete;
+        CheckForUpdatesCheckBox.IsChecked = _settings.CheckForUpdates;
+        Http2CheckBox.IsChecked = _settings.Http2Enabled;
         SettingsOverlay.Visibility = Visibility.Visible;
         FolderTextBox.Focus();
     }
@@ -1128,9 +1281,12 @@ public partial class MainWindow : Window
                 speedLimit = 0;
             }
 
+            var http2 = Http2CheckBox.IsChecked == true;
+
             var engineChanged =
                 !string.Equals(folder, _settings.DownloadDirectory, StringComparison.OrdinalIgnoreCase) ||
-                perHost != _settings.MaxConnectionsPerHost;
+                perHost != _settings.MaxConnectionsPerHost ||
+                http2 != _settings.Http2Enabled;
 
             var updated = _settings with
             {
@@ -1146,6 +1302,8 @@ public partial class MainWindow : Window
                 ShowNotifications = ShowNotificationsCheckBox.IsChecked == true,
                 ClipboardMonitoring = ClipboardMonitoringCheckBox.IsChecked == true,
                 ShutdownWhenComplete = ShutdownWhenCompleteCheckBox.IsChecked == true,
+                CheckForUpdates = CheckForUpdatesCheckBox.IsChecked == true,
+                Http2Enabled = Http2CheckBox.IsChecked == true,
                 SpeedLimitKBps = speedLimit,
                 WindowWidth = Width,
                 WindowHeight = Height,

@@ -120,7 +120,10 @@ public class DownloadManagerTests : IDisposable
             () => job.Status == DownloadSessionStatus.Downloading && job.BytesDownloaded > 0);
 
         manager.Pause(job);
-        await WaitUntilAsync(() => job.Status == DownloadSessionStatus.Paused);
+        // RunTask completes exactly when the engine finishes unwinding into
+        // the Paused state, which is deterministic (no polling race).
+        await job.RunTask!.WaitAsync(TimeSpan.FromSeconds(60));
+        Assert.Equal(DownloadSessionStatus.Paused, job.Status);
 
         var session = job.Session!;
         Assert.True(File.Exists(session.PartPath));
@@ -152,6 +155,73 @@ public class DownloadManagerTests : IDisposable
         Assert.Equal(1, handler.MaxActiveStreams);
     }
 
+    [Fact]
+    public async Task AddUrl_WithConnectionOverride_AppliesToSession()
+    {
+        await using var manager = CreateManager(out var handler);
+        handler.Files["/a.bin"] =
+            CreatePatternedBytes(checked((int)(4 * DownloadEngine.MinimumSegmentSize)));
+
+        Assert.True(manager.AddUrl(new Uri("https://unit.test/a.bin"), 4));
+        var job = manager.Jobs.Single();
+        await job.RunTask!;
+
+        Assert.Equal(DownloadSessionStatus.Completed, job.Status);
+        Assert.Equal(4, job.Session!.ConnectionCount);
+        Assert.Equal(4, job.Session.Segments.Count);
+        Assert.NotNull(job.ActualSha256);
+    }
+
+    [Fact]
+    public async Task Schedule_FutureTime_KeepsJobWaitingUntilCleared()
+    {
+        await using var manager = CreateManager(out var handler);
+        handler.Files["/a.bin"] = FileBytes;
+        handler.OpenGate();
+
+        Assert.True(manager.AddUrl(new Uri("https://unit.test/a.bin")));
+        var job = manager.Jobs.Single();
+
+        manager.Schedule(job, DateTime.Now.AddHours(1));
+        await Task.Delay(1500);
+        Assert.Equal(DownloadSessionStatus.Waiting, job.Status);
+        Assert.NotNull(job.StartAfter);
+
+        manager.Schedule(job, null);
+        Assert.Null(job.StartAfter);
+        handler.ReleaseGate();
+        await job.RunTask!;
+        Assert.Equal(DownloadSessionStatus.Completed, job.Status);
+    }
+
+    [Fact]
+    public void UpdateProgress_StoresSegmentSnapshot()
+    {
+        var metadata = new DownloadMetadata(
+            new Uri("https://unit.test/a.bin"),
+            HttpStatusCode.PartialContent,
+            "a.bin",
+            null,
+            100,
+            null,
+            null,
+            false,
+            ByteRangeSupport.Supported);
+        var job = new DownloadJob(metadata, null, 2, BufferMode.Auto);
+        var segments = new[]
+        {
+            new DownloadSegmentProgress(
+                1, 0, 49, 25, 50, DownloadSegmentStatus.Downloading, null)
+        };
+
+        job.UpdateProgress(new DownloadProgress(
+            "a.bin", 25, 100, 10, 25, 1, segments, 1));
+
+        Assert.Same(segments, job.SegmentsSnapshot);
+        Assert.Contains("0", job.SegmentsSummary);
+        Assert.Contains("1", job.SegmentsSummary);
+    }
+
     private DownloadManager CreateManager(
         out RangeFileHandler handler,
         int maximumConcurrentDownloads = 2)
@@ -177,14 +247,18 @@ public class DownloadManagerTests : IDisposable
             syncContext: null);
     }
 
-    private static async Task WaitUntilAsync(Func<bool> condition, int timeoutSeconds = 30)
+    private static async Task WaitUntilAsync(
+        Func<bool> condition,
+        int timeoutSeconds = 30,
+        string? diagnostic = null)
     {
         var start = DateTime.UtcNow;
         while (!condition())
         {
             if (DateTime.UtcNow - start > TimeSpan.FromSeconds(timeoutSeconds))
             {
-                throw new TimeoutException("Condition was not met in time.");
+                throw new TimeoutException(
+                    $"Condition was not met in time. {diagnostic ?? string.Empty}");
             }
 
             await Task.Delay(50);

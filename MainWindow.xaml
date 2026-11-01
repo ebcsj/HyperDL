@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:loc="clr-namespace:HyperDL.Localization"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:app="clr-namespace:HyperDL"
         Title="{loc:Loc AppTitle}"
         Width="1180"
         Height="800"
@@ -32,6 +33,8 @@
         <SolidColorBrush x:Key="BorderBrushSoft" Color="#E2E8F0" />
         <SolidColorBrush x:Key="SuccessBrush" Color="#15803D" />
         <SolidColorBrush x:Key="DangerBrush" Color="#DC2626" />
+        <app:SegmentPercentConverter x:Key="SegmentPercent" />
+        <app:NullToCollapsedConverter x:Key="NullToCollapsed" />
 
         <Style x:Key="SurfaceCard" TargetType="Border">
             <Setter Property="Background" Value="White" />
@@ -395,6 +398,10 @@
                                 <MenuItem Header="{loc:Loc CopyUrlButton}" Click="ContextCopyUrl_Click" />
                                 <MenuItem Header="{loc:Loc EditUrlButton}" Click="ContextEditUrl_Click" />
                                 <MenuItem Header="{loc:Loc CopyDetailsButton}" Click="ContextCopyDetails_Click" />
+                                <MenuItem Header="{loc:Loc VerifySha256Menu}" Click="ContextVerifySha256_Click" />
+                                <MenuItem Header="{loc:Loc CopySha256Menu}" Click="ContextCopySha256_Click" />
+                                <Separator />
+                                <MenuItem Header="{loc:Loc ScheduleMenu}" Click="ContextSchedule_Click" />
                                 <Separator />
                                 <MenuItem Header="{loc:Loc RetryButton}" Click="ContextRetry_Click" />
                                 <MenuItem Header="{loc:Loc CancelButton}" Click="ContextCancel_Click" />
@@ -501,6 +508,7 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="92" />
@@ -554,9 +562,41 @@
                                 <Run Text=": " />
                                 <Run Text="{Binding BufferModeText}" />
                             </TextBlock>
+                            <TextBlock Foreground="#64748B" FontSize="12"
+                                       Margin="18,0,0,0"
+                                       Text="{Binding SegmentsSummary}" />
                         </StackPanel>
 
-                        <TextBlock Grid.Row="4"
+                        <ItemsControl Grid.Row="4"
+                                      Grid.ColumnSpan="3"
+                                      Margin="0,2,0,4"
+                                      ItemsSource="{Binding SegmentsSnapshot}"
+                                      Visibility="{Binding SegmentsSnapshot, Converter={StaticResource NullToCollapsed}}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <ProgressBar Width="16"
+                                                 Height="14"
+                                                 Margin="1,0"
+                                                 Minimum="0"
+                                                 Maximum="100"
+                                                 ToolTip="{Binding Status}">
+                                        <ProgressBar.Value>
+                                            <MultiBinding Converter="{StaticResource SegmentPercent}">
+                                                <Binding Path="BytesDownloaded" />
+                                                <Binding Path="ExpectedLength" />
+                                            </MultiBinding>
+                                        </ProgressBar.Value>
+                                    </ProgressBar>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <TextBlock Grid.Row="5"
                                    Grid.ColumnSpan="3"
                                    Text="{Binding ErrorDetailsText}"
                                    Style="{StaticResource ErrorText}" />
@@ -745,6 +785,12 @@
                                       Margin="0,0,0,8" />
                             <CheckBox x:Name="ShutdownWhenCompleteCheckBox"
                                       Content="{loc:Loc ShutdownWhenCompleteLabel}"
+                                      Margin="0,0,0,8" />
+                            <CheckBox x:Name="CheckForUpdatesCheckBox"
+                                      Content="{loc:Loc CheckForUpdatesLabel}"
+                                      Margin="0,0,0,8" />
+                            <CheckBox x:Name="Http2CheckBox"
+                                      Content="{loc:Loc Http2Label}"
                                       Margin="0,0,0,14" />
 
                             <Border Background="#F8FAFC"

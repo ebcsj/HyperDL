@@ -6,7 +6,7 @@ namespace HyperDL.Core;
 
 public sealed class DownloadDatabase
 {
-    private const int SchemaVersion = 2;
+    private const int SchemaVersion = 3;
     private readonly string _databasePath;
     private readonly string _connectionString;
     private readonly SemaphoreSlim _initializationLock = new(1, 1);
@@ -97,6 +97,22 @@ public sealed class DownloadDatabase
                     );
                     """;
                 await schema.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            // Schema v3: PendingDownloads.StartAfter for scheduled downloads.
+            await using (var migration = connection.CreateCommand())
+            {
+                migration.CommandText =
+                    "SELECT COUNT(*) FROM pragma_table_info('PendingDownloads') " +
+                    "WHERE name = 'StartAfter';";
+                var hasColumn = Convert.ToInt64(
+                    await migration.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false)) > 0;
+                if (!hasColumn)
+                {
+                    await using var alter = connection.CreateCommand();
+                    alter.CommandText = "ALTER TABLE PendingDownloads ADD COLUMN StartAfter TEXT NULL;";
+                    await alter.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                }
             }
 
             await using (var version = connection.CreateCommand())
@@ -361,19 +377,23 @@ public sealed class DownloadDatabase
         await using var command = connection.CreateCommand();
         command.CommandText = """
             INSERT INTO PendingDownloads
-                (Id, Url, FileName, RequestedConnections, BufferMode, CreatedAt)
-            VALUES ($id, $url, $fileName, $connections, $bufferMode, $createdAt)
+                (Id, Url, FileName, RequestedConnections, BufferMode, StartAfter, CreatedAt)
+            VALUES ($id, $url, $fileName, $connections, $bufferMode, $startAfter, $createdAt)
             ON CONFLICT(Id) DO UPDATE SET
                 Url = excluded.Url,
                 FileName = excluded.FileName,
                 RequestedConnections = excluded.RequestedConnections,
-                BufferMode = excluded.BufferMode;
+                BufferMode = excluded.BufferMode,
+                StartAfter = excluded.StartAfter;
             """;
         command.Parameters.AddWithValue("$id", pending.Id.ToString("D"));
         command.Parameters.AddWithValue("$url", pending.Url.ToString());
         command.Parameters.AddWithValue("$fileName", pending.FileName);
         command.Parameters.AddWithValue("$connections", pending.RequestedConnections);
         command.Parameters.AddWithValue("$bufferMode", pending.BufferMode.ToString());
+        command.Parameters.AddWithValue(
+            "$startAfter",
+            (object?)pending.StartAfter?.ToString("O") ?? DBNull.Value);
         command.Parameters.AddWithValue("$createdAt", DateTimeOffset.UtcNow.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -398,7 +418,7 @@ public sealed class DownloadDatabase
         var pending = new List<PendingDownload>();
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT Id, Url, FileName, RequestedConnections, BufferMode
+            SELECT Id, Url, FileName, RequestedConnections, BufferMode, StartAfter
             FROM PendingDownloads
             ORDER BY CreatedAt;
             """;
@@ -416,12 +436,19 @@ public sealed class DownloadDatabase
             var bufferMode = Enum.TryParse<BufferMode>(reader.GetString(4), out var parsed)
                 ? parsed
                 : BufferMode.Auto;
+            var startAfter = reader.IsDBNull(5)
+                ? (DateTime?)null
+                : DateTime.Parse(
+                    reader.GetString(5),
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind);
             pending.Add(new PendingDownload(
                 id,
                 uri,
                 reader.GetString(2),
                 reader.GetInt32(3),
-                bufferMode));
+                bufferMode,
+                startAfter));
         }
 
         return pending;
@@ -582,4 +609,5 @@ public sealed record PendingDownload(
     Uri Url,
     string FileName,
     int RequestedConnections,
-    BufferMode BufferMode);
+    BufferMode BufferMode,
+    DateTime? StartAfter = null);

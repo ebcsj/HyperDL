@@ -30,6 +30,8 @@ public sealed record HyperDLSettings
     public bool MinimizeToTray { get; init; } = true;
     public bool ShowNotifications { get; init; } = true;
     public bool ShutdownWhenComplete { get; init; }
+    public bool CheckForUpdates { get; init; } = true;
+    public bool Http2Enabled { get; init; }
     public bool LegalUseAcknowledged { get; init; }
     public double WindowWidth { get; init; } = 1080;
     public double WindowHeight { get; init; } = 760;
@@ -47,7 +49,8 @@ public sealed record HyperDLSettings
         BufferMode = BufferMode,
         DynamicSegmentation = DynamicSegmentation,
         MaximumConnectionsPerHost = MaxConnectionsPerHost,
-        SpeedLimitKBps = SpeedLimitKBps
+        SpeedLimitKBps = SpeedLimitKBps,
+        UseHttp2 = Http2Enabled
     };
 }
 

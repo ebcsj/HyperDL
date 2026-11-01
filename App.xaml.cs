@@ -27,7 +27,7 @@ public partial class App : Application
         LocalizationManager.Instance.Apply(settings.Language);
 
         var payload = string.Join(' ', e.Args);
-        var parsed = ParsePayload(payload);
+        var parsed = ActivationParser.Parse(payload);
 
         var createdNew = false;
         _mutex = new Mutex(initiallyOwned: true, MutexName, out createdNew);
@@ -47,8 +47,7 @@ public partial class App : Application
         {
             _window = new MainWindow(
                 settings,
-                parsed.Uris,
-                parsed.External,
+                parsed,
                 settingsError);
             MainWindow = _window;
             _window.Show();
@@ -123,10 +122,10 @@ public partial class App : Application
                         return;
                     }
 
-                    var parsed = ParsePayload(payload);
+                    var parsed = ActivationParser.Parse(payload);
                     if (parsed.Uris.Count > 0)
                     {
-                        await _window.HandleActivationAsync(parsed.Uris, parsed.External);
+                        await _window.HandleActivationAsync(parsed);
                     }
                     else
                     {
@@ -179,114 +178,6 @@ public partial class App : Application
                 await Task.Delay(150).ConfigureAwait(false);
             }
         }
-    }
-
-    private static (IReadOnlyList<Uri> Uris, bool External, string? InvalidText) ParsePayload(
-        string? payload)
-    {
-        var uris = new List<Uri>();
-        var invalid = new List<string>();
-        var external = false;
-        if (string.IsNullOrWhiteSpace(payload))
-        {
-            return (uris, false, null);
-        }
-
-        var tokens = payload.Split(
-            ['\r', '\n', '\t', ' '],
-            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        for (var index = 0; index < tokens.Length; index++)
-        {
-            var token = tokens[index].Trim().Trim('"', '\'', '<', '>');
-            if (token.StartsWith("hyperdl:", StringComparison.OrdinalIgnoreCase))
-            {
-                external = true;
-                var target = ParseProtocolUrl(token);
-                if (target is not null)
-                {
-                    uris.Add(target);
-                }
-                else
-                {
-                    invalid.Add(token);
-                }
-
-                continue;
-            }
-
-            if ((token.Equals("--add", StringComparison.OrdinalIgnoreCase) ||
-                 token.Equals("--url", StringComparison.OrdinalIgnoreCase)) &&
-                index + 1 < tokens.Length)
-            {
-                token = tokens[++index].Trim('"', '\'', '<', '>');
-            }
-
-            if (Uri.TryCreate(token, UriKind.Absolute, out var uri) &&
-                DownloadUrlValidator.IsSupported(uri))
-            {
-                uris.Add(uri);
-            }
-            else if (token.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-            {
-                invalid.Add(token);
-            }
-        }
-
-        var distinct = uris
-            .DistinctBy(uri => uri.GetComponents(UriComponents.HttpRequestUrl, UriFormat.UriEscaped))
-            .ToArray();
-        return (distinct, external, invalid.Count > 0 ? string.Join(' ', invalid) : null);
-    }
-
-    private static Uri? ParseProtocolUrl(string value)
-    {
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) ||
-            !uri.Scheme.Equals(ProtocolRegistration.Scheme, StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
-
-        var queryUrl = GetQueryParameter(uri, "url");
-        if (queryUrl is not null &&
-            Uri.TryCreate(queryUrl, UriKind.Absolute, out var fromQuery) &&
-            DownloadUrlValidator.IsSupported(fromQuery))
-        {
-            return fromQuery;
-        }
-
-        var path = Uri.UnescapeDataString(uri.AbsolutePath).Trim('/');
-        if (path.StartsWith("http", StringComparison.OrdinalIgnoreCase) &&
-            Uri.TryCreate(path, UriKind.Absolute, out var fromPath) &&
-            DownloadUrlValidator.IsSupported(fromPath))
-        {
-            return fromPath;
-        }
-
-        return null;
-    }
-
-    private static string? GetQueryParameter(Uri uri, string name)
-    {
-        var query = uri.Query;
-        if (string.IsNullOrWhiteSpace(query))
-        {
-            return null;
-        }
-
-        foreach (var part in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
-        {
-            var separator = part.IndexOf('=');
-            var key = separator >= 0 ? part[..separator] : part;
-            if (!Uri.UnescapeDataString(key).Equals(name, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            var raw = separator >= 0 ? part[(separator + 1)..] : string.Empty;
-            return Uri.UnescapeDataString(raw.Replace('+', ' '));
-        }
-
-        return null;
     }
 
     private static HyperDLSettings LoadSettings(out string? error)
