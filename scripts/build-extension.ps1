@@ -35,7 +35,7 @@ $requiredFiles = @(
     "icons/icon128.png"
 )
 
-$allowedPermissions = @("activeTab", "contextMenus", "storage")
+$allowedPermissions = @("activeTab", "contextMenus", "storage", "nativeMessaging")
 $forbiddenManifestProperties = @(
     "host_permissions",
     "optional_host_permissions",
