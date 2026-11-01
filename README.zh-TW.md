@@ -40,7 +40,7 @@ HyperDL 是由 **Kerby Chow** 建立的獨立開源專案。
   指定 offset。
 - 使用 SQLite 保存下載及分段 metadata；下載檔案內容寫入磁碟，不存放於資料庫。
 - 檔名清理及避免覆蓋同名檔案。
-- Low RAM 緩衝區模式及共用連線限制器。
+- 緩衝區模式（Auto／LowRam／Balanced／Fast）及共用連線限制器。
 - Windows x64 self-contained 發布及 per-user Inno Setup 安裝器。
 
 ## 專案狀態
@@ -49,13 +49,19 @@ HyperDL 是由 **Kerby Chow** 建立的獨立開源專案。
 |---|---|---|
 | HTTP/HTTPS 下載 | 已實作 | 僅支援直接檔案網址。 |
 | HTTP Range | 已實作 | 會驗證 Range 支援及 Partial Content 回應。 |
-| 分段下載 | 已實作 | 固定分段；需確認檔案大小及 Range 支援。 |
+| 分段下載 | 已實作 | 支援固定分段與動態分段（合作式切分）。 |
 | 單連線回退 | 已實作 | 無法安全分段時使用。 |
 | 暫停／繼續 | 有條件支援 | 僅適用於合資格的分段工作，不適用於單連線回退。 |
-| SQLite 恢復 | 有條件支援 | 保存分段工作的 metadata 及 offset。 |
+| SQLite 恢復 | 有條件支援 | 保存分段工作的 metadata 及 offset，支援待處理佇列與自動續傳。 |
+| 緩衝區模式 | 已實作 | `Auto` / `LowRam` / `Balanced` / `Fast`，全域 64 MiB 預算。 |
+| 重試與逾時 | 已實作 | 指數退避、閒置逾時、`If-Range`、來源變更檢查。 |
+| 磁碟檢查 | 已實作 | 磁碟空間預檢、FAT32 4 GB 限制。 |
+| 頻寬限制與並行控制 | 已實作 | 速度上限、每主機/全域連線限制、並行下載數限制。 |
+| 雙語介面 | 已實作 | 繁體中文／英文，可在設定切換。 |
+| 瀏覽器整合 | 已實作 | `hyperdl://` 自訂協定、Chrome 擴充功能橋接、單一實例 IPC。 |
+| 多選／右鍵選單／搜尋 | 已實作 | 多選操作、右鍵選單、搜尋篩選、清除已完成、編輯網址、刪除檔案、開啟記錄。 |
 | FTP/FTPS | 不支援 | 未實作 FTP 用戶端。 |
 | BitTorrent／磁力連結 | 不支援 | 未實作 Torrent 引擎。 |
-| 動態分段 | 不支援 | 下載期間不會拆分或重新規劃分段。 |
 | 自動更新 | 不支援 | 沒有更新器或更新來源。 |
 | 公開 GitHub Release | 已上傳 | 請下載新版或執行新版 Setup 更新。 |
 
@@ -71,8 +77,8 @@ HyperDL 是由 **Kerby Chow** 建立的獨立開源專案。
 ```
 
 HyperDL 不會將完整檔案或完整分段載入記憶體，也不會以大型 `MemoryStream` 暫存整個下載。
-Low RAM 模式每個 Worker 使用 64 KiB 緩衝區；一般模式使用 80 KiB。總記憶體使用量仍會
-受 Worker 數量、系統及其他執行程式影響，因此不承諾固定的程序記憶體上限。
+緩衝區大小依據所選的緩衝區模式（`Auto`、`LowRam`、`Balanced`、`Fast`）動態調整，並受全域
+64 MiB 網路緩衝預算限制。總記憶體使用量仍會受 Worker 數量、系統及其他執行程式影響，因此不承諾固定的程序記憶體上限。
 
 ## 連線模式
 
@@ -95,8 +101,9 @@ Auto 數值只是目標，不是保證。必須確認伺服器支援 Range、檔
 ## 異常關閉後恢復
 
 分段工作會將原始及最終網址、路徑、檔案大小、狀態、來源驗證資訊及分段 offset 保存在
-`%LOCALAPPDATA%\HyperDL\hyperdl.db`。工作執行中約每五秒儲存檢查點，並在狀態改變時更新。
-程式重新啟動後不會自動開始下載；請在清單選取標示為可恢復的工作，再按 `繼續`。
+`%LOCALAPPDATA%\HyperDL\hyperdl.db`。工作執行中約每兩秒儲存檢查點，並在狀態改變時更新。
+若設定已開啟「啟動時自動續傳未完成的下載」（預設開啟），程式啟動時會自動恢復已中斷與
+已暫停的工作；否則請在清單選取標示為可恢復的工作，再按 `繼續`。
 
 繼續前 HyperDL 會重新探測來源，並比較可取得的檔案大小、ETag、Last-Modified 及 Range
 支援資訊，以降低拼接不同檔案版本的風險。若無法確認相容性，會停止續傳。單連線回退工作
@@ -132,8 +139,9 @@ Setup 安裝包已包含 self-contained 發布檔案；安裝時不會再從其�
 一般解除安裝會移除已安裝的應用程式，但不會刻意刪除使用者下載內容或
 `%LOCALAPPDATA%\HyperDL` 下的資料。
 
-目前沒有提供 Portable ZIP；`scripts/publish.ps1` 會產生 self-contained 發布資料夾，但不會
-將它封裝成 ZIP。安裝時請使用可信來源提供的 Setup。
+GitHub Release 另提供 Portable ZIP（`HyperDL_<版本>_win-x64_portable.zip`），由 Release
+workflow 從相同的 self-contained 發布輸出封裝；解壓縮後直接執行 `HyperDL.exe` 即可，
+無需安裝。
 
 ## 快速開始
 
@@ -151,9 +159,9 @@ dotnet run --project HyperDL.csproj
 
 1. 在 `URL` 欄輸入直接 HTTP 或 HTTPS 檔案網址。
 2. 選擇 `Auto` 或連線數。
-3. 按 `Start Download`。
+3. 按 `加入下載`。
 4. 在視窗中查看進度、已下載大小、速度及狀態。
-5. 選取完成的工作，再按 `開啟下載資料夾` 前往檔案位置。
+5. 選取完成的工作，再按 `開啟資料夾` 前往檔案位置。
 
 預設下載目錄為目前 Windows 使用者的 `Downloads` 資料夾。有伺服器提供檔名時會優先採用；
 否則使用網址路徑，必要時使用安全的 fallback 檔名。若目標檔名已存在，會加上序號以避免覆蓋。
@@ -185,10 +193,11 @@ SQLite 下載歷史及恢復 metadata 儲存於：
 %LOCALAPPDATA%\HyperDL\hyperdl.db
 ```
 
-設定包括下載目錄、偏好的連線數、最大同時下載設定、全域連線上限、Low RAM 模式及合法
-使用確認。最大同時下載設定可儲存，但目前佇列工作仍會依序執行。
+設定包括下載目錄、偏好的連線數、最大同時下載數、全域連線上限、緩衝區模式、速度上限、
+動態分段及合法使用確認。最大同時下載設定會限制同時執行的工作數量。
 
-Low RAM 模式每個 Worker 使用 64 KiB 網路緩衝區；一般模式使用 80 KiB。這些是每個 Worker
+緩衝區大小依所選緩衝區模式（`Auto`、`LowRam`、`Balanced`、`Fast`）調整，並受全域
+64 MiB 網路緩衝預算限制。這些是每個 Worker
 的緩衝區大小，不代表整個處理程序的記憶體上限。SQLite 保存下載 metadata 及分段 offset，
 不保存下載檔案內容。
 
@@ -239,8 +248,17 @@ dotnet build HyperDL.sln -c Release
 dotnet test HyperDL.sln -c Release --no-build
 ```
 
-最近一次記錄的本機驗證（2026 年 10 月 25 日）結果為 **Build 0 錯誤、0 警告，115 項測試通過**。
+最近一次記錄的本機驗證（2026 年 10 月 31 日）結果為 **Build 0 錯誤、0 警告，123 項測試通過**。
 這只是該次執行的結果，不代表其他 commit 或環境也一定有相同結果。
+
+## 路線圖
+
+- [x] M0：安全網、基線、日誌與 CI 基礎
+- [x] M1：可靠性（重試、閒置逾時、If-Range、來源變更、緩衝模式、磁碟檢查、DB WAL/UPSERT、待處理佇列）
+- [x] M2：動態分段（排程器、合作式切分、驗證、自適應）
+- [x] M3：易用性與雙語（多下載、多選、搜尋篩選、右鍵選單、編輯網址、刪除、記錄）
+- [x] M4：Chrome 擴充功能橋接、協定註冊、發佈/安裝器/CI 更新
+- [ ] M5：系統匣/Toast/MVVM、HTTP/2 調校、SHA-256 校驗、排程、自動更新（延後）
 
 建立 Windows x64 self-contained 發布目錄：
 
@@ -277,14 +295,15 @@ powershell -ExecutionPolicy Bypass -File scripts\test-installer.ps1
 | 下載目錄 | 檔案目的地；預設為目前使用者的 `Downloads`。 |
 | 連線數 | Auto 或 1、2、4、8、16、32、64。 |
 | 全域連線上限 | 活躍網路 Workers 共用的連線上限；範圍為 1–64。 |
-| Low RAM 模式 | 使用 64 KiB 網路緩衝區，而非 80 KiB。 |
-| 最大同時下載數 | 可保存的設定；目前佇列仍依序執行工作。 |
+| Low RAM 模式 | 舊版切換，對應 `LowRam` 緩衝區模式（64 KiB Worker 緩衝區）。 |
+| 最大同時下載數 | 限制同時執行的工作數量。 |
 
 ## 發布與 GitHub Release
 
-提供給使用者的發布檔案是產生的 `installer\Output\HyperDL_Setup.exe`。可將該安裝程式
-作為 GitHub Release 附件；原始碼 Repository 應保留發布腳本及 `.iss` 定義，不應提交產生
-的 `bin/`、`obj/` 或 `artifacts/` 目錄。
+Release 由 GitHub Actions 自動建置：推送 `v*` tag（或手動執行 Release workflow）後，
+CI 會發布 win-x64 self-contained 應用程式、以 Inno Setup 產生 `HyperDL_<版本>_Setup.exe`、
+封裝 `HyperDL_<版本>_win-x64_portable.zip`，並產生 `SHA256SUMS.txt` 附加到 Release。
+原始碼 Repository 不提交產生的 `bin/`、`obj/` 或 `artifacts/` 目錄。
 
 最新版本已上傳，請下載新版或執行新版 Setup 更新既有安裝。
 
@@ -304,12 +323,11 @@ powershell -ExecutionPolicy Bypass -File scripts\test-installer.ps1
 
 - 僅支援 Windows x64 及直接 HTTP/HTTPS 檔案網址。
 - 不支援 Range 的伺服器會使用單連線；該模式不能暫停或續傳。
-- 分段在下載開始前建立；不支援動態拆分或自適應連線。
+- 動態分段適用於符合條件、支援 Range 的下載；單連線回退使用單一固定串流。
 - 更多連線不保證速度更快；伺服器可能限速、拒絕請求或降低吞吐量。
 - 來源變更偵測能力取決於伺服器提供的檔案大小、ETag、Last-Modified 等資訊。
 - 不支援 FTP/FTPS、BitTorrent、多工作排程器及自動更新。
 - 未簽署的程式或安裝程式可能觸發 Windows SmartScreen。
-- 目前沒有 Portable ZIP。
 
 ## 後續改善方向
 

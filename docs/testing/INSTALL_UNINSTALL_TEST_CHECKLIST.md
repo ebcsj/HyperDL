@@ -16,6 +16,7 @@ destructive checks against real user downloads or recovery data.
 - [ ] HyperDL appears in Windows Installed Apps / Apps and Features.
 - [ ] Application icon, version, and publisher are displayed as expected.
 - [ ] Installed application files are present.
+- [ ] The `hyperdl://` protocol is registered under `HKCU\Software\Classes\hyperdl`.
 - [ ] No removed integration or host files are installed.
 
 ## Download workflows

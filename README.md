@@ -43,12 +43,15 @@ trademarks, or official assets.
 
 > The latest HyperDL release has been uploaded. Download it or run the new Setup to update an existing installation.
 
-- ✅ Complete: HTTP/HTTPS downloads, range probing, fixed segments, and single-connection fallback.
-- ✅ Complete: Auto and fixed connection choices, Pause, Resume, Cancel, progress, speed, and ETA.
-- ✅ Complete: SQLite download history, segment offset persistence, and loading recoverable jobs.
-- ✅ Complete: Windows x64 self-contained publishing and a per-user Inno Setup definition.
-- 🚧 Not yet verified: Downloads from different public servers, long-running large-file transfers, and multiple real-world Windows installation scenarios.
-- ❌ Not supported: FTP/FTPS, BitTorrent, dynamic segmentation, and automatic updates.
+- ✅ Complete: Dynamic segmentation (cooperative split) for eligible range-supported files ≥ 64 MiB (default on, configurable).
+- ✅ Complete: Buffer modes (`Auto`, `Low RAM`/`LowRam`, `Balanced`, `Fast`), global 64 MiB budget, per-download overrides.
+- ✅ Complete: Retry with backoff/jitter, idle-timeout protection, `If-Range` on resume, source-change detection.
+- ✅ Complete: Disk space preflight and FAT32 4 GB limit checks with localized errors.
+- ✅ Complete: Per-engine bandwidth limiter, per-host/global connection limits, concurrency gate.
+- ✅ Complete: Pending queue persistence, auto-resume on startup, graceful shutdown checkpointing.
+- ✅ Complete: Bilingual UI (English / 繁體中文) with runtime language switching, resource-based localization.
+- ✅ Complete: Chrome extension bridge via `hyperdl://` protocol (HKCU registration), CLI/single-instance IPC.
+- ✅ Complete: Multi-select, context menu, search/filter, clear completed, edit URL, delete files, open logs.
 
 Statuses describe the current code and tests, not a promise to deliver planned features.
 
@@ -64,7 +67,7 @@ Statuses describe the current code and tests, not a promise to deliver planned f
 - A fresh source probe before Resume, comparing file size, ETag, Last-Modified, and range support.
 - SQLite download and segment metadata, with recoverable jobs loaded at startup.
 - Progress, speed, ETA, file information, and segment status display.
-- Low RAM mode and a global active-connection limit.
+- Buffer modes (`Auto`, `Low RAM`, `Balanced`, `Fast`) and a global active-connection limit.
 - Filename sanitization, Windows reserved-name handling, and a safe fallback name.
 - xUnit tests, win-x64 self-contained publishing, and an Inno Setup 6 installer.
 
@@ -78,14 +81,17 @@ Statuses describe the current code and tests, not a promise to deliver planned f
 | Auto mode | ✅ Complete | Chooses a target connection count by file size, then applies range and minimum-segment limits. |
 | Fixed connection modes | ✅ Complete | Offers 1, 2, 4, 8, 16, 32, or 64. |
 | Pause / Resume | ✅ Complete | For segmented jobs with known size and confirmed range support. |
-| Cancel | ✅ Complete | Cancelling an active segmented job removes its incomplete `.part` file. |
+| Cancel | ✅ Complete | Cancelling stops the job and keeps the `.part` file; a cancelled segmented job stays resumable from the list. |
 | SQLite recovery | ✅ Complete | Saves download and segment state; eligible interrupted jobs are marked Recoverable. |
-| Low RAM | ✅ Complete | Low RAM worker buffer is 64 KiB; standard mode uses 80 KiB. |
+| Low RAM | ✅ Complete | Legacy switch that maps to the `LowRam` buffer mode (64 KiB worker buffer). |
 | Installer | ✅ Complete | Inno Setup definition and build script; Inno Setup 6 is required to compile. |
 | FTP / FTPS | ❌ Not supported | No FTP/FTPS client is implemented. |
 | BitTorrent | ❌ Not supported | Torrent and magnet downloads are unsupported. |
 | Automatic updates | ❌ Not supported | No update feed, signature verification, or update installation flow exists. |
-| Dynamic segmentation | ❌ Not supported | Segments are created before a job starts and are not split or replanned during download. |
+| Dynamic segmentation | ✅ Complete | Cooperative split for eligible files ≥ 64 MiB (configurable). |
+| Buffer modes | ✅ Complete | `Auto` / `LowRam` / `Balanced` / `Fast` with 64 MiB global budget. |
+| Browser integration | ✅ Complete | `hyperdl://` protocol + Chrome extension bridge. |
+| Localization | ✅ Complete | English and 繁體中文 (runtime switchable). |
 
 ## Memory-efficient Design
 
@@ -96,8 +102,9 @@ Network stream → bounded worker buffer → file on disk
 ```
 
 HyperDL does not load a complete file or segment into RAM and does not use a
-large `MemoryStream` to hold a download. Low RAM mode uses a 64 KiB buffer per
-worker; standard mode uses 80 KiB. Active worker counts and other system
+large `MemoryStream` to hold a download. Buffer sizes are determined by the
+selected buffer mode (`Auto`, `LowRam`, `Balanced`, or `Fast`) and are limited
+by a global 64 MiB network-buffer budget. Active worker counts and other system
 activity also affect memory, so no fixed total-RAM limit is promised.
 
 ## Connection Modes
@@ -126,14 +133,16 @@ server throttling, HTTP 429 responses, or lower speeds.
 For segmented jobs, the original and final URLs, paths, file size, status,
 source validators, and segment offsets are stored in
 `%LOCALAPPDATA%\HyperDL\hyperdl.db`. Active jobs are checkpointed about every
-five seconds and when their state changes.
+two seconds and when their state changes.
 
 ```text
 Downloading → .part + SQLite checkpoint → application restart
             → Recoverable → user selects Resume
 ```
 
-Downloads do not restart automatically. Before resuming, HyperDL checks the
+If "Resume unfinished downloads on startup" is enabled in Settings (the
+default), HyperDL resumes paused and interrupted jobs automatically when it
+starts. Before resuming, HyperDL checks the
 `.part` length, probes the source again, and compares file size, ETag,
 Last-Modified, and range support. Resume is stopped if compatibility cannot be
 confirmed. When a server provides no comparable validators, not every remote
@@ -150,8 +159,8 @@ recommended file for most users is `HyperDL_Setup.exe`. To update an existing
 installation, download and run the latest Setup.
 
 1. Download `HyperDL_Setup.exe` from the project's GitHub Releases page.
-2. Download `HyperDL-win-x64.zip` only if that Portable ZIP is explicitly attached to the release; the current publish script does not create a ZIP.
-3. If the release provides a SHA-256 checksum file, calculate the local file hash in PowerShell and compare it to that trusted checksum:
+2. Optionally download `HyperDL_<version>_win-x64_portable.zip` from the same release for a portable, no-install copy.
+3. Each release ships a `SHA256SUMS.txt` file. Calculate the local file hash in PowerShell and compare it to that trusted checksum:
 
    ```powershell
    Get-FileHash .\HyperDL_Setup.exe -Algorithm SHA256
@@ -180,16 +189,16 @@ Installed Apps also lists HyperDL.
 
 ### Portable / ZIP version
 
-No Portable ZIP is currently built or distributed. `scripts/publish.ps1`
-creates a self-contained publish directory but does not package it as a ZIP.
-Follow separate instructions only if a future release explicitly includes
-that archive.
+Releases include a portable ZIP (`HyperDL_<version>_win-x64_portable.zip`)
+built by the GitHub Release workflow from the same self-contained publish
+output. Extract it anywhere and run `HyperDL.exe`; no installation is
+required.
 
 ## First Launch
 
 1. Start HyperDL from the desktop shortcut, Start Menu, or installation folder.
 2. Review the legal-use notice shown on the first launch.
-3. Open Settings and confirm the download folder, connection count, maximum concurrent downloads, and Low RAM option.
+3. Open Settings and confirm the download folder, connection count, maximum concurrent downloads, and buffer mode.
 4. The default download folder is `%USERPROFILE%\Downloads`; change it in Settings if needed.
 5. Download history and settings are stored under `%LOCALAPPDATA%\HyperDL`.
 
@@ -201,7 +210,7 @@ that archive.
 2. Enter a direct HTTP or HTTPS file URL in the URL field.
 3. Confirm the download folder in Settings. Open Download Folder opens the selected job's folder or the default folder.
 4. Choose Auto or a fixed connection count.
-5. Select Start Download.
+5. Select Add download.
 6. The list and detail area show the filename, size, progress, speed, ETA, status, and connection count.
 
 HyperDL accepts direct HTTP/HTTPS file URLs. It does not parse download
@@ -227,26 +236,25 @@ resumed.
 
 ### Cancel
 
-Cancel stops the current download. For segmented jobs it removes the
-incomplete `.part` file and saves a Cancelled history state; that job can no
-longer resume from the partial file. A single-connection download also
-removes its `.part` file when cancelled or when it fails. Use Pause, not
-Cancel, if you intend to continue later.
+Cancel stops the current download. The `.part` file is kept, and a cancelled
+segmented job stays in the list where it can be resumed later. To remove a
+job together with its downloaded and partial data, use
+`Delete file and remove` and confirm the deletion.
 
 ### `.part` files
 
 A `.part` file contains incomplete data or data awaiting validation. Do not
 rename it manually to the final filename. After checking the ranges, segment
 states, and file length, HyperDL renames it to the final file.
-Pausing a segmented download retains its `.part` file; manually deleting the
-file invalidates recovery for that job. Cancel differs from Pause: Cancel
-removes the job's incomplete `.part` file.
+Pausing or cancelling a segmented download retains its `.part` file; manually
+deleting the file invalidates recovery for that job.
 
 ### Crash recovery
 
 Segmented downloads use `.part` for file data and SQLite for URLs, destination
-paths, status, and segment offsets. After restarting, HyperDL does not start
-jobs automatically. Select a Recoverable job from the list and choose Resume.
+paths, status, and segment offsets. With auto-resume enabled (the default),
+paused and interrupted jobs resume automatically on startup; otherwise select
+a Recoverable job from the list and choose Resume.
 The source is probed again before resuming. Normal uninstall does not
 automatically delete SQLite or `.part` data.
 
@@ -389,15 +397,16 @@ code-signed; verify release files and checksums before distribution.
 
 ## Testing
 
-Both the pre-change baseline and the latest test run completed with
-**115 passed and 0 failed**. The Release build completed with **0 errors and
+The most recent recorded run (2026-10-31) completed with
+**123 passed and 0 failed**. The Release build completed with **0 errors and
 0 warnings**. These results are from this run and do not guarantee results
 for other branches or future changes.
 
 Automated coverage includes URL scheme validation, filename sanitization,
 HTTP Range probing, Partial Content / `Content-Range`, segment boundaries,
 connection planning, worker errors and cancellation, Pause/Resume offsets,
-SQLite transactions, recovery state, and the global connection limiter.
+SQLite transactions, recovery state, the global connection limiter, and
+localization string-table parity.
 Installation and uninstall checks are listed in
 [docs/testing/INSTALL_UNINSTALL_TEST_CHECKLIST.md](docs/testing/INSTALL_UNINSTALL_TEST_CHECKLIST.md)
 and require manual testing in an isolated Windows environment.
@@ -437,22 +446,20 @@ installation directory. See “Removing all local data” for manual cleanup.
 
 - Windows x64 and direct HTTP/HTTPS file URLs only.
 - Some servers do not support ranges; those downloads use one connection, which cannot be paused and resumed.
-- Fixed segments are created before download; dynamic splitting and adaptive connections are not implemented.
+- Dynamic splitting applies to eligible range-supported downloads; the single-connection fallback uses one fixed stream.
 - More connections do not guarantee higher speed; servers may throttle, reject requests, or reduce throughput.
 - Source-change detection depends on server-provided file size, ETag, Last-Modified, and similar information.
 - FTP/FTPS, BitTorrent, a full multi-job scheduler, and automatic updates are unsupported.
 - Unsigned executables or installers may trigger Windows SmartScreen.
-- A Portable ZIP is not currently available.
 
 ## Roadmap
 
-Possible areas for improvement; these are not implemented features or delivery commitments:
-
-- [ ] Add end-to-end tests with a controlled HTTP server and large files.
-- [ ] Improve the download list, error details, and recovery workflow.
-- [ ] Evaluate download scheduling and speed limits.
-- [ ] Improve accessibility and localization.
-- [ ] Improve the signed release and installer process.
+- [x] M0: Safety net, baseline, logging/CI foundations
+- [x] M1: Reliability (retry, idle timeout, If-Range, source-change, buffer modes, disk checks, DB WAL/UPSERT, pending queue)
+- [x] M2: Dynamic segmentation (scheduler, cooperative split, validation, adaptive)
+- [x] M3: Usability + bilingual UI (multi-download, multi-select, search/filter, context menu, edit URL, delete, logs)
+- [x] M4: Chrome extension bridge, protocol registration, publish/installer/CI updates
+- [ ] M5: Tray/Toast/MVVM toolkit, HTTP/2 tuning, SHA-256 verification, scheduling, auto-update (deferred)
 
 ## 📜 License
 

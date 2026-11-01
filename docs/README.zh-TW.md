@@ -9,6 +9,8 @@ HyperDL 文件提供繁體中文及英文版本：
 | 架構 | [架構說明](ARCHITECTURE.zh-TW.md) | [Architecture](ARCHITECTURE.md) |
 | 專案結構 | [專案結構](PROJECT_STRUCTURE.zh-TW.md) | [Project structure](PROJECT_STRUCTURE.md) |
 | 安裝測試 | [安裝與解除安裝測試](testing/INSTALL_UNINSTALL_TEST_CHECKLIST.zh-TW.md) | [Installation checks](testing/INSTALL_UNINSTALL_TEST_CHECKLIST.md) |
+| 安裝指南 | [安裝指南](../INSTALL.zh-TW.md) | [Installation guide](../INSTALL.md) |
+| Chrome 擴充功能 | [Chrome 擴充功能](../CHROME_EXTENSION.zh-TW.md) | [Chrome extension](../CHROME_EXTENSION.md) |
 
 安全及協定說明：
 
