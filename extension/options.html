@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HyperDL Settings</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="options.js" defer></script>
+</head>
+<body class="options-page">
+  <main class="page">
+    <header class="brand page-header">
+      <img src="icons/icon48.png" width="52" height="52" alt="">
+      <div class="brand-copy">
+        <h1>HyperDL Settings</h1>
+        <p class="subtitle">Defaults for links sent from this browser</p>
+      </div>
+    </header>
+
+    <section class="card">
+      <form id="settings-form" novalidate>
+        <div class="field">
+          <label for="connections">Default connections</label>
+          <select id="connections" name="connections"></select>
+          <p class="hint">Auto lets HyperDL choose a value based on the server. More connections can be faster, but some servers limit them.</p>
+        </div>
+
+        <div class="field">
+          <label class="checkbox">
+            <input id="confirm" name="confirm" type="checkbox">
+            <span>Show a confirmation in HyperDL before starting a download</span>
+          </label>
+          <p class="hint">When enabled, the app asks for confirmation before the download is added. Disable this only if you trust the links you send.</p>
+        </div>
+
+        <div class="actions">
+          <button id="save" class="primary" type="submit">Save settings</button>
+          <button id="reset" class="secondary" type="button">Reset to defaults</button>
+        </div>
+      </form>
+
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+    </section>
+
+    <section class="card meta-card" aria-label="About">
+      <div class="meta-row">
+        <span class="meta-label">Version</span>
+        <span id="version" class="version">-</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">Integration</span>
+        <span class="meta-value">hyperdl:// local protocol</span>
+      </div>
+      <p class="hint">This extension sends links only to the HyperDL app installed on this computer. It does not collect or transmit browsing data.</p>
+    </section>
+  </main>
+</body>
+</html>

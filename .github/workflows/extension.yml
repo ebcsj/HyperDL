@@ -1,0 +1,108 @@
+name: Extension
+
+on:
+  push:
+    paths:
+      - "extension/**"
+      - "scripts/build-extension.ps1"
+      - ".github/workflows/extension.yml"
+  pull_request:
+    paths:
+      - "extension/**"
+      - "scripts/build-extension.ps1"
+      - ".github/workflows/extension.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: extension-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  extension:
+    name: Validate and package extension
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate extension JSON
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $files = @()
+          if (Test-Path -LiteralPath 'extension' -PathType Container) {
+              $files = @(Get-ChildItem -LiteralPath 'extension' -Recurse -File -Filter '*.json')
+          }
+
+          if ($files.Count -eq 0) {
+              Write-Host "No JSON files found under extension/."
+          }
+
+          foreach ($file in $files) {
+              $raw = Get-Content -LiteralPath $file.FullName -Raw
+              if ([string]::IsNullOrWhiteSpace($raw)) {
+                  throw "JSON file is empty: $($file.FullName)"
+              }
+
+              try {
+                  $null = $raw | ConvertFrom-Json
+              }
+              catch {
+                  throw "Invalid JSON in $($file.FullName): $($_.Exception.Message)"
+              }
+
+              Write-Host "Valid JSON: $($file.FullName)"
+          }
+
+      - name: Verify extension build script
+        shell: pwsh
+        run: |
+          if (-not (Test-Path -LiteralPath 'scripts/build-extension.ps1' -PathType Leaf)) {
+              throw "scripts/build-extension.ps1 was not found. It is required to build the extension package."
+          }
+
+      - name: Build extension package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $global:LASTEXITCODE = 0
+          & .\scripts\build-extension.ps1
+          if ($LASTEXITCODE -ne 0) {
+              throw "scripts/build-extension.ps1 failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Locate extension package
+        id: package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $workspace = (Get-Location).Path
+          $zips = @(
+              Get-ChildItem -Path $workspace -Filter '*.zip' -Recurse -File |
+                  Where-Object { $_.FullName -notmatch '\\(bin|obj|node_modules|\.git)\\' } |
+                  Sort-Object LastWriteTime -Descending
+          )
+
+          if ($zips.Count -eq 0) {
+              throw "scripts/build-extension.ps1 did not produce a .zip file."
+          }
+
+          $zip = $zips[0]
+          $relative = $zip.FullName.Substring($workspace.Length) -replace '^[\\/]+', '' -replace '\\', '/'
+          "zip_path=$relative" >> $env:GITHUB_OUTPUT
+          "zip_name=$($zip.Name)" >> $env:GITHUB_OUTPUT
+          Write-Host "Using extension package: $relative"
+
+      - name: Upload extension package
+        uses: actions/upload-artifact@v4
+        with:
+          name: HyperDL-extension
+          path: ${{ steps.package.outputs.zip_path }}
+          if-no-files-found: error
