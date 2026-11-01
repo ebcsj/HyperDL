@@ -36,8 +36,9 @@ flowchart TD
 4. Each worker reads into a bounded buffer and writes directly to the temporary
    file. Segment workers use `RandomAccess.WriteAsync` at the segment offset;
    the fallback uses sequential `FileStream` writes.
-5. Completion validates the received data and moves the `.part` file to its
-   final path. It does not launch the downloaded file.
+5. Completion validates the received data, computes the file's SHA-256, and
+   moves the `.part` file to its final path. It does not launch the downloaded
+   file; the hash is exposed for user verification and copying.
 
 ## Segment and connection policy
 
@@ -47,6 +48,10 @@ flowchart TD
 - The application shares a global connection limiter across active workers;
   when the limit is reached, waiters park event-driven until a lease is
   released.
+- Requests use strict HTTP/1.1 by default; an experimental setting allows
+  HTTP/2 negotiation (`UseHttp2`, off by default).
+- Queued jobs can carry a future start time; scheduled jobs park before
+  acquiring a concurrency lease and re-arm daily for far-future schedules.
 - The initial range layout is persisted. When dynamic segmentation is enabled,
   idle workers can split large in-flight ranges, and the resulting segment map
   is persisted with the session.

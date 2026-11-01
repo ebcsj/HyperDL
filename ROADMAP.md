@@ -37,24 +37,25 @@
 
 ---
 
-## v1.3.0 — 候選待辦（未承諾）
+## v1.3.0 — 本輪範圍
 
-### 下載功能
-- [ ] SHA-256 校驗：伺服器 `Digest`/checksum header 或使用者貼上 checksum 時，完成後串流計算比對；不符 → Failed
-- [ ] 排程下載：job 開始時間／限速時段
-- [ ] HTTP/2 開關（`DownloadEngine.CreateRequest` 目前強制 HTTP/1.1 RequestVersionExact；改可設定，預設 1.1，用 benchmark A/B 量測）
-- [ ] 自適應連線數精進（依每條連線吞吐動態增減）
+### 下載功能 ✅
+- [x] SHA-256 校驗：完成後串流計算並顯示；右鍵驗證（貼入預期值比對）與複製
+- [x] 排程下載：佇列工作的未來開始時間（PendingDownloads.StartAfter，schema v3）
+- [x] HTTP/2 開關（`UseHttp2`，預設關閉維持 HTTP/1.1 exact）
 
-### 整合
-- [ ] 擴充功能 `connections`/`confirm` 參數：App 端 `ParseProtocolUrl` 目前只讀 `url`；需傳遞覆寫連線數、confirm=0 跳過確認
-- [ ] 版本檢查：啟動時查 GitHub Releases API（僅提示，不自動安裝）
+### 整合 ✅
+- [x] 擴充功能 `connections`/`confirm` 參數：per-job 連線數覆寫；confirm=1 補加確認、confirm=0 不繞過 App 設定
+- [x] 版本檢查：啟動時查 GitHub Releases API（僅提示連結，不自動安裝）
+- [x] 分段進度視覺化：詳細區每段迷你進度條 + 完成摘要
+
+### 候選待辦（未承諾）
 - [ ] Native Messaging（取代 hyperdl:// 協定橋接，免除 Chrome 外部協定確認框）
 - [ ] CLI 擴充（--list、--pause-all、JSON 輸出）
-
-### UI 與架構
-- [ ] 分段進度視覺化：`DownloadProgress.Segments` 已隨進度回報，詳細區顯示每段狀態
+- [ ] 自適應連線數精進（依每條連線吞吐動態增減）
 - [ ] MVVM toolkit 重構（現為 code-behind）
 - [ ] 深色模式、設定匯入／匯出、ARM64 build
+- [ ] 多來源鏡像下載
 
 ### 清理
 - [ ] 擴充功能 README 與 App 參數合約對齊（隨 `connections`/`confirm` 實作移除「參數保留」註記）
@@ -75,3 +76,4 @@
 | 日期 | 內容 |
 |---|---|
 | 2026-11-01 | 重建本檔：v1.2.0 範圍（品質清理、測試補強、通知與系統匣）與 v1.3.0 候選清單。 |
+| 2026-11-01 | v1.3.0 範圍確定並實作：SHA-256 校驗、排程下載（DB v3）、HTTP/2 開關、擴充功能參數、分段視覺化、版本檢查。 |

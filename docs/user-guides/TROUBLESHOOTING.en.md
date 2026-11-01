@@ -67,6 +67,21 @@ exiting. Double-click the tray icon to bring the window back; the tray
 menu offers pause all, resume all, and a real exit. If no icon is visible,
 start HyperDL again from the Start Menu — running instances are reused.
 
+## SHA-256 verification reports a mismatch
+
+A mismatch means the file on disk differs from the expected hash you pasted:
+the source file changed, the download was corrupted, or the expected value
+was mistyped. Re-download the file and compare again; do not open or trust a
+mismatched file. HyperDL keeps the `.part`-free completed file on disk until
+you delete it.
+
+## A scheduled download has not started
+
+Scheduled jobs wait in the queue until their start time. Right-click the job
+and choose `Schedule…`; clearing the box and confirming starts the job
+immediately. Changing the schedule only applies to jobs that have not started
+downloading yet.
+
 ## Build or installation problems
 
 - Development builds require Windows x64 and the .NET 8 SDK. Run

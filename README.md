@@ -53,6 +53,7 @@ trademarks, or official assets.
 - ✅ Complete: Chrome extension bridge via `hyperdl://` protocol (HKCU registration), CLI/single-instance IPC.
 - ✅ Complete: Multi-select, context menu, search/filter, clear completed, edit URL, delete files, open logs.
 - ✅ Complete: System tray (minimize-to-tray), download notifications, opt-in clipboard monitoring, and an optional shutdown prompt when the queue finishes.
+- ✅ Complete: SHA-256 hashing with verify/copy actions, per-segment progress bars, scheduled downloads, optional HTTP/2, and a startup update check.
 
 Statuses describe the current code and tests, not a promise to deliver planned features.
 
@@ -71,6 +72,7 @@ Statuses describe the current code and tests, not a promise to deliver planned f
 - Buffer modes (`Auto`, `Low RAM`, `Balanced`, `Fast`) and a global active-connection limit.
 - Filename sanitization, Windows reserved-name handling, and a safe fallback name.
 - System tray with minimize-to-tray, download notifications, opt-in clipboard URL monitoring, and an optional shutdown prompt when the queue finishes.
+- SHA-256 hashing of finished downloads with verify and copy actions; optional HTTP/2 negotiation (off by default); scheduled start times; per-segment progress bars; startup update check.
 - xUnit tests, win-x64 self-contained publishing, and an Inno Setup 6 installer.
 
 ## Development Status
@@ -95,6 +97,7 @@ Statuses describe the current code and tests, not a promise to deliver planned f
 | Browser integration | ✅ Complete | `hyperdl://` protocol + Chrome extension bridge. |
 | Localization | ✅ Complete | English and 繁體中文 (runtime switchable). |
 | System tray & notifications | ✅ Complete | Minimize to tray, balloon notifications, opt-in clipboard monitoring, optional shutdown prompt. |
+| SHA-256 & scheduling | ✅ Complete | Post-download hashing with verify/copy, scheduled start times, optional HTTP/2, update check. |
 
 ## Memory-efficient Design
 
@@ -482,7 +485,8 @@ installation directory. See “Removing all local data” for manual cleanup.
 - [x] M3: Usability + bilingual UI (multi-download, multi-select, search/filter, context menu, edit URL, delete, logs)
 - [x] M4: Chrome extension bridge, protocol registration, publish/installer/CI updates
 - [x] M5 (v1.2): system tray, download notifications, opt-in clipboard monitoring, shutdown prompt
-- [ ] M6: MVVM toolkit, HTTP/2 tuning, SHA-256 verification, scheduling, extension parameters, version check (see ROADMAP.md)
+- [x] M6 (v1.3): SHA-256 verification, extension parameters, segment bars, update check, HTTP/2 option, scheduling
+- [ ] M7: MVVM toolkit, connection warm-up, mirrors (see ROADMAP.md)
 
 ## 📜 License
 

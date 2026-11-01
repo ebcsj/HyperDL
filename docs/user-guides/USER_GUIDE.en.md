@@ -92,6 +92,22 @@ to shut down Windows when the queue finishes` is enabled and every queued
 download has finished, HyperDL asks for confirmation before shutting Windows
 down; the shutdown can be cancelled with `shutdown /a`.
 
+## Integrity, scheduling, and extras
+
+- When a download finishes, HyperDL computes its SHA-256 hash. Right-click a
+  job and choose `Verify SHA-256…` to compare it against an expected value
+  from the download source; `Copy SHA-256` copies the computed hash.
+- Right-click a queued (not yet started) job and choose `Schedule…` to set a
+  future start time (`yyyy-MM-dd HH:mm`); leave the box empty to clear the
+  schedule. Scheduled jobs wait in the queue until their time arrives.
+- Per-segment progress bars appear in the details panel while a segmented
+  download runs.
+- `Use HTTP/2` in Settings is experimental and off by default; HTTP/1.1 is
+  used unless enabled.
+- When `Check GitHub for a newer version at startup` is enabled, HyperDL
+  compares the latest GitHub release to its own version and shows a link in
+  the status bar; it never downloads or installs anything.
+
 ## Safe use
 
 Only download content you are authorized to obtain, and follow website terms

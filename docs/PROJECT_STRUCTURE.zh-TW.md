@@ -8,8 +8,8 @@
 |---|---|
 | `App.xaml`、`App.xaml.cs` | WPF 應用程式啟動及共用資源。 |
 | `MainWindow.xaml`、`MainWindow.xaml.cs` | 主視窗介面、UI 事件、下載清單協調及使用者訊息。 |
-| `Core/Downloading/` | 下載引擎、佇列管理、工作模型、工作階段、分段、排程器、重試與頻寬限制、進度、範圍配置、metadata 及檔名處理。 |
-| `Core/Networking/` | HTTP 探測、HTTP/HTTPS 網址驗證及共用連線限制器。 |
+| `Core/Downloading/` | 下載引擎、佇列管理、工作模型、工作階段、分段、排程器、重試與頻寬限制、進度、範圍配置、metadata、檔案雜湊及檔名處理。 |
+| `Core/Networking/` | HTTP 探測、HTTP/HTTPS 網址驗證、共用連線限制器及更新版本比較。 |
 | `Core/Storage/` | SQLite 下載歷史／恢復資料及使用者設定保存。 |
 | `Localization/` | 執行時本地化管理、XAML markup 擴充及英文／繁體中文字串表。 |
 | `Platform/` | `hyperdl://` 協定註冊輔助。 |

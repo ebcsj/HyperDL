@@ -9,8 +9,8 @@ work; the source namespaces and application behavior remain unchanged.
 |---|---|
 | `App.xaml`, `App.xaml.cs` | WPF application startup and shared application resources. |
 | `MainWindow.xaml`, `MainWindow.xaml.cs` | Main window layout, UI events, download-list coordination, and user feedback. |
-| `Core/Downloading/` | Download engine, manager, job model, sessions, segments, scheduler, retry and bandwidth limiting, progress, range layout, metadata, and filename handling. |
-| `Core/Networking/` | HTTP metadata probe, HTTP/HTTPS URL validation, and shared connection limiter. |
+| `Core/Downloading/` | Download engine, manager, job model, sessions, segments, scheduler, retry and bandwidth limiting, progress, range layout, metadata, file hashing, and filename handling. |
+| `Core/Networking/` | HTTP metadata probe, HTTP/HTTPS URL validation, shared connection limiter, and update version comparison. |
 | `Core/Storage/` | SQLite download history/recovery and user settings persistence. |
 | `Localization/` | Runtime localization manager, XAML markup extension, and the English/Traditional Chinese string tables. |
 | `Platform/` | `hyperdl://` protocol registration helpers. |
