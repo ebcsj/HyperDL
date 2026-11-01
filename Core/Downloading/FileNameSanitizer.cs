@@ -52,6 +52,19 @@ public static class FileNameSanitizer
         return safeFileName;
     }
 
+    /// <summary>
+    /// Derives a safe file name from the last segment of a URI, with the same
+    /// fallback rules as <see cref="Sanitize"/>.
+    /// </summary>
+    public static string GetFileNameFromUri(Uri uri)
+    {
+        var lastSegment = uri.Segments.Length > 0
+            ? Uri.UnescapeDataString(uri.Segments[^1]).Trim('/')
+            : string.Empty;
+
+        return Sanitize(lastSegment);
+    }
+
     private static bool IsReservedDeviceName(string name) =>
         name.Equals("CON", StringComparison.OrdinalIgnoreCase) ||
         name.Equals("PRN", StringComparison.OrdinalIgnoreCase) ||

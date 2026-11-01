@@ -8,6 +8,9 @@
 安裝程式沒有定義解除安裝時刪除資料的區段。一般解除安裝會保留使用者下載內容、安裝目錄以外
 的 `.part` 檔案，以及 `%LOCALAPPDATA%\HyperDL` 中的設定與下載歷史。
 
+安裝程式也會在 `HKCU\Software\Classes\hyperdl` 註冊 `hyperdl://` 協定，讓 Chrome
+擴充功能能把連結交給應用程式。
+
 ## 需求
 
 - Windows x64。
