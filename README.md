@@ -415,15 +415,19 @@ code-signed; verify release files and checksums before distribution.
 
 ## Testing
 
-The most recent recorded run (2026-10-31) completed with
-**123 passed and 0 failed**. The Release build completed with **0 errors and
+The most recent recorded run (2026-11-01) completed with
+**154 passed and 0 failed**. The Release build completed with **0 errors and
 0 warnings**. These results are from this run and do not guarantee results
 for other branches or future changes.
 
 Automated coverage includes URL scheme validation, filename sanitization,
 HTTP Range probing, Partial Content / `Content-Range`, segment boundaries,
 connection planning, worker errors and cancellation, Pause/Resume offsets,
-SQLite transactions, recovery state, the global connection limiter, and
+SQLite transactions, recovery state, the global connection limiter, the
+segment scheduler (split correctness, minimum tail, caps, coverage
+validation), the bandwidth limiter (aggregate rate), the disk space guard
+(FAT32 limits, reserve math), the download manager (queue, duplicate
+detection, pause/resume offsets, removal, concurrency limits), and
 localization string-table parity.
 Installation and uninstall checks are listed in
 [docs/testing/INSTALL_UNINSTALL_TEST_CHECKLIST.md](docs/testing/INSTALL_UNINSTALL_TEST_CHECKLIST.md)

@@ -14,6 +14,7 @@ HyperDL documentation is available in Traditional Chinese and English:
 
 Security and protocol notes:
 
+- [改進路線圖（繁體中文）](../ROADMAP.md) — shipped scope per version and candidate backlog
 - [威脅模型](reference/THREAT_MODEL.zh-TW.md) · [Threat model](reference/THREAT_MODEL.md)
 - [支援協定](reference/PROTOCOLS.zh-TW.md) · [Supported protocols](reference/PROTOCOLS.md)
 - [其他協定與功能說明](reference/README.zh-TW.md) · [Other protocol and feature notes](reference/README.md)

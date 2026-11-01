@@ -44,7 +44,9 @@ flowchart TD
 - Supported connection choices are Auto, 1, 2, 4, 8, 16, 32, and 64.
 - Auto selects a target from the known file size. The actual count is reduced
   when the file cannot provide that many segments of at least 4 MiB each.
-- The application shares a global connection limiter across active workers.
+- The application shares a global connection limiter across active workers;
+  when the limit is reached, waiters park event-driven until a lease is
+  released.
 - The initial range layout is persisted. When dynamic segmentation is enabled,
   idle workers can split large in-flight ranges, and the resulting segment map
   is persisted with the session.
@@ -78,6 +80,19 @@ information to avoid joining data from a changed source.
 Unknown-length or non-range fallback downloads are not persisted as resumable
 sessions. Pause/resume and crash recovery are therefore not available for that
 path.
+
+## Shell integration (v1.2)
+
+- The window minimizes and closes into the notification tray when
+  `MinimizeToTray` is enabled (the default); the tray menu restores the
+  window and offers pause all, resume all, and a real exit.
+- Job completion and failure raise tray balloon notifications when
+  `ShowNotifications` is enabled (the default).
+- Clipboard URL monitoring is opt-in (`ClipboardMonitoring`, off by
+  default): a newly copied direct HTTP/HTTPS URL fills the URL box; no
+  clipboard content leaves the machine.
+- When `ShutdownWhenComplete` is enabled and every queued download has
+  finished, HyperDL asks for confirmation before shutting Windows down.
 
 ## Current boundaries
 

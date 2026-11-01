@@ -14,6 +14,7 @@ work; the source namespaces and application behavior remain unchanged.
 | `Core/Storage/` | SQLite download history/recovery and user settings persistence. |
 | `Localization/` | Runtime localization manager, XAML markup extension, and the English/Traditional Chinese string tables. |
 | `Platform/` | `hyperdl://` protocol registration helpers. |
+| `Assets/` | Application icon (`app.ico`) used by the executable and tray. |
 | `TextPromptWindow.cs` | Code-only modal prompt used for URL editing. |
 
 Core types keep the existing `HyperDL.Core` namespace. The folder layout is
@@ -48,6 +49,8 @@ the entire `HyperDL.Tests/` tree from its own compile items.
 | `installer/Output/` | Generated Setup output; ignored by Git. |
 | `extension/` | Manifest V3 Chrome extension source, README, and privacy policy. |
 | `docs/user-guides/` | User guides and troubleshooting in Traditional Chinese and English. |
+| `ROADMAP.md` | Improvement roadmap: shipped scope per version and candidate backlog (Traditional Chinese). |
+| `RELEASE_NOTES_v1.2.0.md` | Release notes for the current version (bilingual). |
 | `docs/reference/` | Architecture reference notes, protocol support, security notes, and unsupported-feature boundaries. |
 | `docs/testing/` | Manual installation and uninstall checklist. |
 | `docs/images/` | Screenshot guidance and future application screenshots. |

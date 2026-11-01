@@ -255,7 +255,7 @@ dotnet build HyperDL.sln -c Release
 dotnet test HyperDL.sln -c Release --no-build
 ```
 
-最近一次記錄的本機驗證（2026 年 10 月 31 日）結果為 **Build 0 錯誤、0 警告，123 項測試通過**。
+最近一次記錄的本機驗證（2026 年 11 月 1 日）結果為 **Build 0 錯誤、0 警告，154 項測試通過**。
 這只是該次執行的結果，不代表其他 commit 或環境也一定有相同結果。
 
 ## 路線圖
