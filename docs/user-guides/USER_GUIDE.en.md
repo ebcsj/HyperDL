@@ -77,6 +77,21 @@ Normal uninstall removes the application but keeps user downloads, `.part`
 files, settings, and history under `%LOCALAPPDATA%\HyperDL`. Back up any data
 before manually removing it.
 
+## System tray, notifications, and extras
+
+Closing or minimizing HyperDL hides it to the notification tray when the
+`Minimize to the system tray` setting is enabled (the default). Double-click
+the tray icon to restore the window; the tray menu offers pause all, resume
+all, and a real exit.
+
+Completed and failed downloads raise a notification when `Show download
+notifications` is enabled. Clipboard monitoring is off by default (opt-in):
+when enabled, copying a direct HTTP/HTTPS URL fills the URL box, where Enter
+adds the download; the `Paste` button does the same on demand. When `Offer
+to shut down Windows when the queue finishes` is enabled and every queued
+download has finished, HyperDL asks for confirmation before shutting Windows
+down; the shutdown can be cancelled with `shutdown /a`.
+
 ## Safe use
 
 Only download content you are authorized to obtain, and follow website terms

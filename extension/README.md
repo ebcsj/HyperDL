@@ -161,7 +161,7 @@ or drag the direct link into HyperDL.
 
 ## Version
 
-Extension version: **1.1.1**
+Extension version: **1.2.0**
 
 This first version uses the custom protocol bridge. Native Messaging may be
 evaluated later for a tighter integration.
