@@ -311,11 +311,17 @@
                              FontSize="14"
                              KeyDown="UrlTextBox_KeyDown" />
                 </Grid>
-                <Button Grid.Column="1"
-                        Content="{loc:Loc AddButton}"
-                        Style="{StaticResource PrimaryButton}"
-                        ToolTip="{loc:Loc ToolTipAdd}"
-                        Click="AddButton_Click" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <Button Content="{loc:Loc PasteButton}"
+                            Style="{StaticResource ToolButton}"
+                            VerticalAlignment="Center"
+                            Margin="0,0,8,0"
+                            Click="PasteButton_Click" />
+                    <Button Content="{loc:Loc AddButton}"
+                            Style="{StaticResource PrimaryButton}"
+                            ToolTip="{loc:Loc ToolTipAdd}"
+                            Click="AddButton_Click" />
+                </StackPanel>
             </Grid>
         </Border>
 
@@ -727,6 +733,18 @@
                                       Margin="0,0,0,8" />
                             <CheckBox x:Name="ConfirmExternalCheckBox"
                                       Content="{loc:Loc ConfirmExternalLabel}"
+                                      Margin="0,0,0,8" />
+                            <CheckBox x:Name="MinimizeToTrayCheckBox"
+                                      Content="{loc:Loc MinimizeToTrayLabel}"
+                                      Margin="0,0,0,8" />
+                            <CheckBox x:Name="ShowNotificationsCheckBox"
+                                      Content="{loc:Loc ShowNotificationsLabel}"
+                                      Margin="0,0,0,8" />
+                            <CheckBox x:Name="ClipboardMonitoringCheckBox"
+                                      Content="{loc:Loc ClipboardMonitoringLabel}"
+                                      Margin="0,0,0,8" />
+                            <CheckBox x:Name="ShutdownWhenCompleteCheckBox"
+                                      Content="{loc:Loc ShutdownWhenCompleteLabel}"
                                       Margin="0,0,0,14" />
 
                             <Border Background="#F8FAFC"

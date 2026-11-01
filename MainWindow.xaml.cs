@@ -32,6 +32,11 @@ public partial class MainWindow : Window
     private bool _initializing = true;
     private bool _loaded;
     private bool _allowClose;
+    private bool _reallyExit;
+    private bool _shutdownPrompted;
+    private string? _lastClipboardUrl;
+    private System.Windows.Forms.NotifyIcon? _trayIcon;
+    private DispatcherTimer? _clipboardTimer;
     private ICollectionView? _jobsView;
 
     public MainWindow(
@@ -65,9 +70,218 @@ public partial class MainWindow : Window
         SelectLanguageItem();
         _timer.Tick += Timer_Tick;
         ApplyLocalization();
+        InitializeTrayIcon();
+        ApplyClipboardMonitoring();
     }
 
     private static string L(string key) => LocalizationManager.GetString(key);
+
+    private void InitializeTrayIcon()
+    {
+        try
+        {
+            var icon = string.IsNullOrWhiteSpace(Environment.ProcessPath) ||
+                       !File.Exists(Environment.ProcessPath)
+                ? System.Drawing.SystemIcons.Application
+                : System.Drawing.Icon.ExtractAssociatedIcon(Environment.ProcessPath);
+            _trayIcon = new System.Windows.Forms.NotifyIcon
+            {
+                Icon = icon,
+                Text = LocalizationManager.GetString("AppTitle"),
+                Visible = true
+            };
+            var menu = new System.Windows.Forms.ContextMenuStrip();
+            menu.Items.Add(LocalizationManager.GetString("AppTitle"), null,
+                (_, _) => Dispatcher.Invoke(ShowFromTray));
+            menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
+            menu.Items.Add(LocalizationManager.GetString("PauseAllButton"), null,
+                (_, _) => Dispatcher.Invoke(() =>
+                {
+                    _manager.PauseAll();
+                    UpdateCommandStates();
+                }));
+            menu.Items.Add(LocalizationManager.GetString("ResumeAllButton"), null,
+                (_, _) => Dispatcher.Invoke(() =>
+                {
+                    _manager.ResumeAll();
+                    UpdateCommandStates();
+                }));
+            menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
+            menu.Items.Add(LocalizationManager.GetString("TrayExitButton"), null,
+                (_, _) => Dispatcher.Invoke(ExitFromTray));
+            _trayIcon.ContextMenuStrip = menu;
+            _trayIcon.DoubleClick += (_, _) => Dispatcher.Invoke(ShowFromTray);
+        }
+        catch
+        {
+            // A missing icon or a locked tray must never break the download window.
+            _trayIcon = null;
+        }
+    }
+
+    private void ShowFromTray()
+    {
+        Show();
+        if (WindowState == WindowState.Minimized)
+        {
+            WindowState = WindowState.Normal;
+        }
+
+        Activate();
+        Topmost = true;
+        Topmost = false;
+        Focus();
+    }
+
+    private void ExitFromTray()
+    {
+        _reallyExit = true;
+        Close();
+    }
+
+    private void NotifyJobFinished(bool success, DownloadJob job)
+    {
+        if (!_settings.ShowNotifications || _trayIcon is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var title = L(success ? "DownloadCompleteTitle" : "DownloadFailedTitle");
+            var body = success
+                ? string.Format(L("DownloadCompleteFormat"), job.FileName)
+                : job.ErrorText;
+            _trayIcon.ShowBalloonTip(
+                3000,
+                title,
+                body,
+                System.Windows.Forms.ToolTipIcon.Info);
+        }
+        catch
+        {
+            // Balloon tips are best effort.
+        }
+    }
+
+    private void MaybeOfferShutdown()
+    {
+        if (!_settings.ShutdownWhenComplete || _shutdownPrompted)
+        {
+            return;
+        }
+
+        var jobs = _manager.Jobs;
+        if (!jobs.Any(job => job.Status == DownloadSessionStatus.Completed) ||
+            jobs.Any(job => job.Status is DownloadSessionStatus.Downloading or
+                                       DownloadSessionStatus.Waiting or
+                                       DownloadSessionStatus.Pausing or
+                                       DownloadSessionStatus.Paused))
+        {
+            return;
+        }
+
+        _shutdownPrompted = true;
+        var answer = MessageBox.Show(
+            this,
+            L("ShutdownConfirmMessage"),
+            L("ShutdownConfirmTitle"),
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+        if (answer != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo("shutdown", "/s /t 30")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true
+            });
+            SetStatus(L("ShutdownConfirmMessage"));
+        }
+        catch (Exception exception)
+        {
+            ShowMessage(
+                L("ShutdownConfirmTitle"),
+                exception.Message,
+                MessageBoxImage.Warning);
+        }
+    }
+
+    private void ApplyClipboardMonitoring()
+    {
+        if (_settings.ClipboardMonitoring && _clipboardTimer is null)
+        {
+            _clipboardTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            _clipboardTimer.Tick += ClipboardTimer_Tick;
+            _clipboardTimer.Start();
+        }
+        else if (!_settings.ClipboardMonitoring && _clipboardTimer is not null)
+        {
+            _clipboardTimer.Stop();
+            _clipboardTimer.Tick -= ClipboardTimer_Tick;
+            _clipboardTimer = null;
+        }
+    }
+
+    private void ClipboardTimer_Tick(object? sender, EventArgs e)
+    {
+        try
+        {
+            if (!Clipboard.ContainsText())
+            {
+                return;
+            }
+
+            var text = Clipboard.GetText().Trim();
+            if (string.IsNullOrWhiteSpace(text) ||
+                text == _lastClipboardUrl ||
+                text == UrlTextBox.Text)
+            {
+                return;
+            }
+
+            if (!Uri.TryCreate(text, UriKind.Absolute, out var uri) ||
+                !DownloadUrlValidator.IsSupported(uri))
+            {
+                return;
+            }
+
+            _lastClipboardUrl = text;
+            UrlTextBox.Text = text;
+            SetStatus(L("ClipboardUrlReady"));
+        }
+        catch
+        {
+            // The clipboard can be locked by another process; skip this tick.
+        }
+    }
+
+    private void PasteButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var text = Clipboard.ContainsText() ? Clipboard.GetText().Trim() : string.Empty;
+            if (Uri.TryCreate(text, UriKind.Absolute, out var uri) &&
+                DownloadUrlValidator.IsSupported(uri))
+            {
+                UrlTextBox.Text = text;
+                UrlTextBox.Focus();
+                UrlTextBox.CaretIndex = text.Length;
+            }
+            else
+            {
+                SetStatus(L("ClipboardEmpty"));
+            }
+        }
+        catch
+        {
+            SetStatus(L("ClipboardEmpty"));
+        }
+    }
 
     public void BringToFront()
     {
@@ -219,6 +433,11 @@ public partial class MainWindow : Window
 
         if (added > 0)
         {
+            _shutdownPrompted = false;
+        }
+
+        if (added > 0)
+        {
             SetStatus(string.Format(L("BatchAddedFormat"), added));
         }
         else if (skipped > 0)
@@ -254,6 +473,7 @@ public partial class MainWindow : Window
         if (result.Added > 0)
         {
             UrlTextBox.Clear();
+            _shutdownPrompted = false;
             SetStatus(string.Format(L("BatchAddedFormat"), result.Added));
             if (result.Skipped > 0)
             {
@@ -848,6 +1068,10 @@ public partial class MainWindow : Window
         DynamicSegmentationCheckBox.IsChecked = _settings.DynamicSegmentation;
         AutoResumeCheckBox.IsChecked = _settings.AutoResume;
         ConfirmExternalCheckBox.IsChecked = _settings.ConfirmExternalDownloads;
+        MinimizeToTrayCheckBox.IsChecked = _settings.MinimizeToTray;
+        ShowNotificationsCheckBox.IsChecked = _settings.ShowNotifications;
+        ClipboardMonitoringCheckBox.IsChecked = _settings.ClipboardMonitoring;
+        ShutdownWhenCompleteCheckBox.IsChecked = _settings.ShutdownWhenComplete;
         SettingsOverlay.Visibility = Visibility.Visible;
         FolderTextBox.Focus();
     }
@@ -918,6 +1142,10 @@ public partial class MainWindow : Window
                 DynamicSegmentation = DynamicSegmentationCheckBox.IsChecked == true,
                 AutoResume = AutoResumeCheckBox.IsChecked == true,
                 ConfirmExternalDownloads = ConfirmExternalCheckBox.IsChecked == true,
+                MinimizeToTray = MinimizeToTrayCheckBox.IsChecked == true,
+                ShowNotifications = ShowNotificationsCheckBox.IsChecked == true,
+                ClipboardMonitoring = ClipboardMonitoringCheckBox.IsChecked == true,
+                ShutdownWhenComplete = ShutdownWhenCompleteCheckBox.IsChecked == true,
                 SpeedLimitKBps = speedLimit,
                 WindowWidth = Width,
                 WindowHeight = Height,
@@ -932,6 +1160,7 @@ public partial class MainWindow : Window
             _manager.Settings = updated;
             GlobalConnectionLimiter.Shared.SetLimit(updated.GlobalConnectionLimit);
             _engine.SetSpeedLimit(updated.SpeedLimitKBps);
+            ApplyClipboardMonitoring();
             if (engineChanged)
             {
                 _engine = CreateEngine(updated);
@@ -1031,6 +1260,8 @@ public partial class MainWindow : Window
     private void Manager_JobCompleted(object? sender, DownloadJob job)
     {
         SetStatus(string.Format(L("DownloadCompleteFormat"), job.FileName));
+        NotifyJobFinished(success: true, job);
+        MaybeOfferShutdown();
         UpdateCommandStates();
     }
 
@@ -1039,6 +1270,7 @@ public partial class MainWindow : Window
         if (job.ErrorKind is { } kind && kind != DownloadErrorKind.Cancelled)
         {
             SetStatus(job.ErrorText);
+            NotifyJobFinished(success: false, job);
         }
 
         UpdateCommandStates();
@@ -1063,6 +1295,22 @@ public partial class MainWindow : Window
         }
     }
 
+    protected override void OnStateChanged(EventArgs e)
+    {
+        base.OnStateChanged(e);
+        if (WindowState == WindowState.Minimized && _settings.MinimizeToTray)
+        {
+            Hide();
+        }
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _trayIcon?.Dispose();
+        _trayIcon = null;
+        base.OnClosed(e);
+    }
+
     private async void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         if (_allowClose)
@@ -1070,8 +1318,18 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (!_reallyExit && _settings.MinimizeToTray)
+        {
+            // Closing hides HyperDL into the notification tray; the tray menu
+            // is the only place that performs a real exit.
+            e.Cancel = true;
+            Hide();
+            return;
+        }
+
         e.Cancel = true;
         _timer.Stop();
+        _clipboardTimer?.Stop();
         SaveColumnWidths();
         _settings = _settings with
         {
@@ -1092,6 +1350,8 @@ public partial class MainWindow : Window
             // Closing must not throw.
         }
 
+        _trayIcon?.Dispose();
+        _trayIcon = null;
         _allowClose = true;
         Close();
     }
