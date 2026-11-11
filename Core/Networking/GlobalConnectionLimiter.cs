@@ -44,7 +44,9 @@ public sealed class GlobalConnectionLimiter
 
             Interlocked.Decrement(ref _active);
             _capacity.Release();
-            await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken).ConfigureAwait(false);
+            // The configured limit is reached. Park on the semaphore and wake up
+            // when a lease is released instead of polling on a timer.
+            await _capacity.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 

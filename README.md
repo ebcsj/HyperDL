@@ -52,6 +52,7 @@ trademarks, or official assets.
 - ✅ Complete: Bilingual UI (English / 繁體中文) with runtime language switching, resource-based localization.
 - ✅ Complete: Chrome extension bridge via `hyperdl://` protocol (HKCU registration), CLI/single-instance IPC.
 - ✅ Complete: Multi-select, context menu, search/filter, clear completed, edit URL, delete files, open logs.
+- ✅ Complete: System tray (minimize-to-tray), download notifications, opt-in clipboard monitoring, and an optional shutdown prompt when the queue finishes.
 
 Statuses describe the current code and tests, not a promise to deliver planned features.
 
@@ -69,6 +70,7 @@ Statuses describe the current code and tests, not a promise to deliver planned f
 - Progress, speed, ETA, file information, and segment status display.
 - Buffer modes (`Auto`, `Low RAM`, `Balanced`, `Fast`) and a global active-connection limit.
 - Filename sanitization, Windows reserved-name handling, and a safe fallback name.
+- System tray with minimize-to-tray, download notifications, opt-in clipboard URL monitoring, and an optional shutdown prompt when the queue finishes.
 - xUnit tests, win-x64 self-contained publishing, and an Inno Setup 6 installer.
 
 ## Development Status
@@ -92,6 +94,7 @@ Statuses describe the current code and tests, not a promise to deliver planned f
 | Buffer modes | ✅ Complete | `Auto` / `LowRam` / `Balanced` / `Fast` with 64 MiB global budget. |
 | Browser integration | ✅ Complete | `hyperdl://` protocol + Chrome extension bridge. |
 | Localization | ✅ Complete | English and 繁體中文 (runtime switchable). |
+| System tray & notifications | ✅ Complete | Minimize to tray, balloon notifications, opt-in clipboard monitoring, optional shutdown prompt. |
 
 ## Memory-efficient Design
 
@@ -240,6 +243,21 @@ Cancel stops the current download. The `.part` file is kept, and a cancelled
 segmented job stays in the list where it can be resumed later. To remove a
 job together with its downloaded and partial data, use
 `Delete file and remove` and confirm the deletion.
+
+### System tray and notifications
+
+Closing or minimizing HyperDL hides it to the notification tray when
+"Minimize to the system tray" is enabled (the default). Double-click the
+tray icon to restore the window; the tray menu offers pause all, resume all,
+and a real exit. Completed and failed downloads raise a notification when
+"Show download notifications" is enabled.
+
+Clipboard monitoring is opt-in (off by default): when enabled, copying a
+direct HTTP/HTTPS URL fills the URL box, where Enter adds the download; the
+"Paste" button does the same on demand. When "Offer to shut down Windows
+when the queue finishes" is enabled and every queued download has finished,
+HyperDL asks for confirmation before shutting Windows down; the shutdown can
+be cancelled with `shutdown /a`.
 
 ### `.part` files
 
@@ -397,15 +415,19 @@ code-signed; verify release files and checksums before distribution.
 
 ## Testing
 
-The most recent recorded run (2026-10-31) completed with
-**123 passed and 0 failed**. The Release build completed with **0 errors and
+The most recent recorded run (2026-11-01) completed with
+**154 passed and 0 failed**. The Release build completed with **0 errors and
 0 warnings**. These results are from this run and do not guarantee results
 for other branches or future changes.
 
 Automated coverage includes URL scheme validation, filename sanitization,
 HTTP Range probing, Partial Content / `Content-Range`, segment boundaries,
 connection planning, worker errors and cancellation, Pause/Resume offsets,
-SQLite transactions, recovery state, the global connection limiter, and
+SQLite transactions, recovery state, the global connection limiter, the
+segment scheduler (split correctness, minimum tail, caps, coverage
+validation), the bandwidth limiter (aggregate rate), the disk space guard
+(FAT32 limits, reserve math), the download manager (queue, duplicate
+detection, pause/resume offsets, removal, concurrency limits), and
 localization string-table parity.
 Installation and uninstall checks are listed in
 [docs/testing/INSTALL_UNINSTALL_TEST_CHECKLIST.md](docs/testing/INSTALL_UNINSTALL_TEST_CHECKLIST.md)
@@ -459,7 +481,8 @@ installation directory. See “Removing all local data” for manual cleanup.
 - [x] M2: Dynamic segmentation (scheduler, cooperative split, validation, adaptive)
 - [x] M3: Usability + bilingual UI (multi-download, multi-select, search/filter, context menu, edit URL, delete, logs)
 - [x] M4: Chrome extension bridge, protocol registration, publish/installer/CI updates
-- [ ] M5: Tray/Toast/MVVM toolkit, HTTP/2 tuning, SHA-256 verification, scheduling, auto-update (deferred)
+- [x] M5 (v1.2): system tray, download notifications, opt-in clipboard monitoring, shutdown prompt
+- [ ] M6: MVVM toolkit, HTTP/2 tuning, SHA-256 verification, scheduling, extension parameters, version check (see ROADMAP.md)
 
 ## 📜 License
 

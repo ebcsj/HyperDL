@@ -66,3 +66,6 @@ HyperDL_Setup*.exe
 # Local IDE settings
 .idea/
 .vscode/settings.json
+
+# ZCode session files
+.zcode/

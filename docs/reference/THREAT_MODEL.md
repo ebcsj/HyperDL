@@ -14,6 +14,9 @@
 - HTTP requests use the platform TLS certificate validation defaults.
 - Downloaded executables and scripts are not launched by the downloader.
 - Download history is stored locally in the user's application data folder.
+- Clipboard URL monitoring is opt-in and disabled by default; when enabled,
+  only direct HTTP/HTTPS URLs are detected and placed in the local UI — no
+  clipboard content leaves the machine.
 
 ## Out of scope
 

@@ -14,6 +14,7 @@ HyperDL 文件提供繁體中文及英文版本：
 
 安全及協定說明：
 
+- [改進路線圖（繁體中文）](../ROADMAP.md) — 各版本已完成範圍與候選待辦
 - [威脅模型](reference/THREAT_MODEL.zh-TW.md) · [Threat model](reference/THREAT_MODEL.md)
 - [支援協定](reference/PROTOCOLS.zh-TW.md) · [Supported protocols](reference/PROTOCOLS.md)
 - [其他協定及功能說明](reference/README.zh-TW.md) · [Other protocol and feature notes](reference/README.md)

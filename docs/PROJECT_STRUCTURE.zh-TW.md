@@ -13,6 +13,7 @@
 | `Core/Storage/` | SQLite 下載歷史／恢復資料及使用者設定保存。 |
 | `Localization/` | 執行時本地化管理、XAML markup 擴充及英文／繁體中文字串表。 |
 | `Platform/` | `hyperdl://` 協定註冊輔助。 |
+| `Assets/` | 應用程式圖示（`app.ico`），用於執行檔與系統匣。 |
 | `TextPromptWindow.cs` | 以程式碼建構的網址編輯對話框。 |
 
 Core 類別維持 `HyperDL.Core` namespace。資料夾只改善檔案導覽，不會變更公開類別名稱或要求
@@ -46,6 +47,8 @@ namespace 遷移。
 | `installer/Output/` | 產生的 Setup 輸出；Git 會忽略此目錄。 |
 | `extension/` | Manifest V3 Chrome 擴充功能原始碼、README 與隱私權政策。 |
 | `docs/user-guides/` | 繁體中文及英文使用指南與疑難排解文件。 |
+| `ROADMAP.md` | 改進路線圖：各版本已完成範圍與候選待辦（繁體中文）。 |
+| `RELEASE_NOTES_v1.2.0.md` | 目前版本的 Release Notes（雙語）。 |
 | `docs/reference/` | 架構、協定、安全及未支援功能說明。 |
 | `docs/testing/` | 安裝及解除安裝人工測試清單。 |
 | `docs/images/` | 截圖指引及日後的應用程式截圖。 |

@@ -27,6 +27,9 @@ public sealed record HyperDLSettings
     public int MaxConnectionsPerHost { get; init; }
     public bool ConfirmExternalDownloads { get; init; } = true;
     public bool ClipboardMonitoring { get; init; }
+    public bool MinimizeToTray { get; init; } = true;
+    public bool ShowNotifications { get; init; } = true;
+    public bool ShutdownWhenComplete { get; init; }
     public bool LegalUseAcknowledged { get; init; }
     public double WindowWidth { get; init; } = 1080;
     public double WindowHeight { get; init; } = 760;

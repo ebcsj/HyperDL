@@ -59,6 +59,14 @@ back up that folder first. Then check the user's disk space and folder
 permissions. Do not delete the SQLite main file, `-wal`, or `-shm` files while
 the application is running.
 
+## The window disappeared
+
+With `Minimize to the system tray` enabled (the default), closing or
+minimizing the window hides HyperDL to the notification tray instead of
+exiting. Double-click the tray icon to bring the window back; the tray
+menu offers pause all, resume all, and a real exit. If no icon is visible,
+start HyperDL again from the Start Menu — running instances are reused.
+
 ## Build or installation problems
 
 - Development builds require Windows x64 and the .NET 8 SDK. Run

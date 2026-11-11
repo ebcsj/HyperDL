@@ -3,13 +3,23 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>1.1.1</Version>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <Version>1.2.0</Version>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <!-- Map absolute build paths to /src so shipped binaries never embed the
          developer's local user profile path (PE debug directory and PDBs). -->
     <PathMap>$(MSBuildProjectDirectory)=/src</PathMap>
   </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="HyperDL.Tests" />
+    <!-- Keep WPF types unambiguous: tray code references WinForms fully qualified. -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
   <ItemGroup>
     <Compile Remove="HyperDL.Tests/**/*.cs" />
   </ItemGroup>
